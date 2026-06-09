@@ -40,6 +40,13 @@ func NewSecApiClient(apiKey string) *Client {
 	return NewClient(apiKey)
 }
 
+func firstParams(params []map[string]string) map[string]string {
+	if len(params) == 0 {
+		return nil
+	}
+	return params[0]
+}
+
 func (c *Client) request(method string, pathname string, params map[string]string, body any) (map[string]any, error) {
 	baseURL := strings.TrimRight(c.BaseURL, "/")
 	if baseURL == "" {
@@ -236,6 +243,14 @@ func (c *Client) FactorReturns(params map[string]string) (map[string]any, error)
 	return c.request(http.MethodGet, "/v1/factors/returns", params, nil)
 }
 
+func (c *Client) FactorHistory(factorKey string, params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/factors/history/"+url.PathEscape(factorKey), params, nil)
+}
+
+func (c *Client) FactorSparklines(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/factors/sparklines", params, nil)
+}
+
 func (c *Client) FactorReturnsIntraday(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/factors/returns/intraday", params, nil)
 }
@@ -256,6 +271,22 @@ func (c *Client) FactorScreen(params map[string]string) (map[string]any, error) 
 	return c.request(http.MethodGet, "/v1/factors/screen", params, nil)
 }
 
+func (c *Client) FactorExtremeMoves(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/factors/extreme-moves", params, nil)
+}
+
+func (c *Client) FactorExtremePairs(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/factors/extreme-pairs", params, nil)
+}
+
+func (c *Client) FactorValuations(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/factors/valuations", params, nil)
+}
+
+func (c *Client) FactorValuationStocks(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/factors/valuations/stocks", params, nil)
+}
+
 func (c *Client) FactorExposures(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/factors/exposures", params, nil)
 }
@@ -272,24 +303,52 @@ func (c *Client) FactorSimilarityPack(params map[string]string) (map[string]any,
 	return c.request(http.MethodGet, "/v1/factors/similarity-pack", params, nil)
 }
 
+func (c *Client) FactorPairs(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/factors/pairs", params, nil)
+}
+
+func (c *Client) FactorPairHistory(f1 string, f2 string, params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/factors/pair-history/"+url.PathEscape(f1)+"/"+url.PathEscape(f2), params, nil)
+}
+
+func (c *Client) FactorBulkDownload(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/factors/bulk-download", params, nil)
+}
+
+func (c *Client) FactorCustom(body any, params ...map[string]string) (map[string]any, error) {
+	return c.request(http.MethodPost, "/v1/factors/custom", firstParams(params), body)
+}
+
 func (c *Client) StockLoadings(ticker string, params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/stocks/"+url.PathEscape(ticker)+"/loadings", params, nil)
 }
 
-func (c *Client) PortfolioAnalyze(body any) (map[string]any, error) {
-	return c.request(http.MethodPost, "/v1/portfolio/analyze", nil, body)
+func (c *Client) PortfolioAnalyze(body any, params ...map[string]string) (map[string]any, error) {
+	return c.request(http.MethodPost, "/v1/portfolio/analyze", firstParams(params), body)
+}
+
+func (c *Client) PortfolioAttribution(body any, params ...map[string]string) (map[string]any, error) {
+	return c.request(http.MethodPost, "/v1/portfolio/attribution", firstParams(params), body)
 }
 
 func (c *Client) ModelPortfolioFactorView(portfolioID string, params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/model-portfolios/"+url.PathEscape(portfolioID)+"/factor-view", params, nil)
 }
 
-func (c *Client) PortfolioOptimize(body any) (map[string]any, error) {
-	return c.request(http.MethodPost, "/v1/portfolio/optimize", nil, body)
+func (c *Client) ModelFactorAnalysis(body any, params ...map[string]string) (map[string]any, error) {
+	return c.request(http.MethodPost, "/v1/models/factor-analysis", firstParams(params), body)
 }
 
-func (c *Client) PortfolioStressTest(body any) (map[string]any, error) {
-	return c.request(http.MethodPost, "/v1/portfolio/stress-test", nil, body)
+func (c *Client) PortfolioOptimize(body any, params ...map[string]string) (map[string]any, error) {
+	return c.request(http.MethodPost, "/v1/portfolio/optimize", firstParams(params), body)
+}
+
+func (c *Client) PortfolioHedge(body any, params ...map[string]string) (map[string]any, error) {
+	return c.request(http.MethodPost, "/v1/portfolio/hedge", firstParams(params), body)
+}
+
+func (c *Client) PortfolioStressTest(body any, params ...map[string]string) (map[string]any, error) {
+	return c.request(http.MethodPost, "/v1/portfolio/stress-test", firstParams(params), body)
 }
 
 func (c *Client) IntelligenceSecurity(params map[string]string) (map[string]any, error) {
