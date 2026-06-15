@@ -45,6 +45,34 @@ func newCaptureClient(t *testing.T) (*Client, *[]capturedRequest, func()) {
 	return client, &captured, server.Close
 }
 
+func TestSearchWrappersRouteToSearchPaths(t *testing.T) {
+	client, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+
+	if _, err := client.SearchFulltext(map[string]string{"q": "going concern", "form": "10-K"}); err != nil {
+		t.Fatalf("SearchFulltext failed: %v", err)
+	}
+	if _, err := client.SemanticSearch(map[string]string{"q": "going concern", "mode": "hybrid"}); err != nil {
+		t.Fatalf("SemanticSearch failed: %v", err)
+	}
+	if _, err := client.SearchSections(map[string]string{"ticker": "AAPL", "q": "risk"}); err != nil {
+		t.Fatalf("SearchSections failed: %v", err)
+	}
+
+	wantPaths := []string{"/v1/search/fulltext", "/v1/search/semantic", "/v1/sections/search"}
+	for i, want := range wantPaths {
+		if (*captured)[i].Path != want {
+			t.Fatalf("path %d = %q, want %q", i, (*captured)[i].Path, want)
+		}
+		if (*captured)[i].Method != http.MethodGet {
+			t.Fatalf("method %d = %q, want GET", i, (*captured)[i].Method)
+		}
+	}
+	if !strings.Contains((*captured)[0].Query, "q=going+concern") && !strings.Contains((*captured)[0].Query, "q=going%20concern") {
+		t.Fatalf("fulltext query missing q: %q", (*captured)[0].Query)
+	}
+}
+
 func TestFactorParityWrappersRouteToLaunchPaths(t *testing.T) {
 	client, captured, closeServer := newCaptureClient(t)
 	defer closeServer()

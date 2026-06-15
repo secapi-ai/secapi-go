@@ -1,12 +1,8 @@
 # SEC API Go SDK
 
-Official Go SDK for [SEC API](https://secapi.ai), the SEC data API designed for agents.
+A lightweight Go client for SEC API factor data, filings, statements, ownership, and agent workflows.
 
-SEC API turns SEC filings and adjacent market data into traceable, source-backed investor workflows. It provides REST, SDK, CLI, and hosted MCP surfaces over filings, statements, ownership, governance, market data, events, webhooks, and agent-ready intelligence workflows.
-
-Use this SDK when you want SEC API inside Go services, workers, command-line tools, or backend jobs while preserving the response metadata that matters: `requestId`, provenance, freshness, materialization state, trace references, accession numbers, and SEC source URLs.
-
-## Install
+## Installation
 
 ```bash
 go get github.com/secapi-ai/secapi-go
@@ -27,85 +23,157 @@ import (
 func main() {
     client := secapi.NewClient(os.Getenv("SECAPI_API_KEY"))
 
+    // Resolve an entity
     entity, err := client.ResolveEntity(map[string]string{"ticker": "AAPL"})
     if err != nil {
         panic(err)
     }
+    fmt.Printf("Entity: %s (%s)\n", entity["name"], entity["ticker"])
 
-    fmt.Println(entity["name"])
+    // Get latest 10-K filing
+    filing, err := client.LatestFiling(map[string]string{
+        "ticker": "AAPL",
+        "form":   "10-K",
+    })
+    if err != nil {
+        panic(err)
+    }
+    fmt.Printf("Filing: %s (%s)\n", filing["title"], filing["filingDate"])
 }
 ```
 
-## Authentication
+## Factor Quickstart
 
-Create an API key from the SEC API site, then export it:
+Use `response_mode=compact` when you are feeding an agent, LLM, notebook, or UI card and want the smallest useful payload. Add `include=trust` when you need freshness, methodology, and materialization metadata for citations or launch checks.
 
-```bash
-export SECAPI_API_KEY=your_key_here
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+
+    secapi "github.com/secapi-ai/secapi-go"
+)
+
+func main() {
+    client := secapi.NewClient(os.Getenv("SECAPI_API_KEY"))
+
+    history, err := client.FactorHistory("VALUE", map[string]string{
+        "range":         "1y",
+        "response_mode": "compact",
+        "include":       "trust,series",
+    })
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(history["factorKey"], history["dataAsOf"])
+
+    valuations, err := client.FactorValuations(map[string]string{
+        "keys":          "VALUE,QUALITY,MOMENTUM",
+        "side":          "all",
+        "sort":          "opportunity_score",
+        "response_mode": "compact",
+        "include":       "trust",
+        "limit":         "25",
+    })
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(valuations["data"])
+
+    dashboard, err := client.FactorDashboard(map[string]string{
+        "country":       "US",
+        "category":      "style",
+        "ticker":        "AAPL",
+        "response_mode": "compact",
+    })
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(dashboard["data"])
+
+    extremeMoves, err := client.FactorExtremeMoves(map[string]string{
+        "category":      "style",
+        "window":        "1d",
+        "min_z_score":   "2",
+        "response_mode": "compact",
+    })
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(extremeMoves["data"])
+
+    extremePairs, err := client.FactorExtremePairs(map[string]string{
+        "category":      "style",
+        "window":        "1m",
+        "min_z_score":   "1",
+        "response_mode": "compact",
+    })
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(extremePairs["data"])
+
+    holdings := []map[string]any{
+        {"symbol": "AAPL", "weight": 0.4},
+        {"symbol": "MSFT", "weight": 0.35},
+        {"symbol": "NVDA", "weight": 0.25},
+    }
+
+    attribution, err := client.PortfolioAttribution(map[string]any{
+        "holdings":  holdings,
+        "window":    "1y",
+        "frequency": "monthly",
+    }, map[string]string{"response_mode": "compact", "include": "trust"})
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(attribution["portfolio"])
+
+    hedge, err := client.PortfolioHedge(map[string]any{
+        "holdings":  holdings,
+        "objective": "factor_neutral",
+        "constraints": map[string]any{"maxHedges": 5},
+    }, map[string]string{"response_mode": "compact", "include": "trust"})
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(hedge["residualExposure"])
+
+    optimized, err := client.PortfolioOptimize(map[string]any{
+        "holdings":  holdings,
+        "objective": "regime_aware",
+        "constraints": map[string]any{"longOnly": true, "maxPositionWeight": 0.35},
+    }, map[string]string{"response_mode": "compact", "include": "trust"})
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(optimized["optimizationNotes"])
+
+    modelAnalysis, err := client.ModelFactorAnalysis(map[string]any{
+        "model": map[string]any{"id": "growth-core", "label": "Growth Core"},
+        "holdings": holdings,
+        "include": map[string]any{"attribution": true, "hedge": true, "optimizer": true},
+    }, map[string]string{"response_mode": "compact", "include": "trust"})
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(modelAnalysis["summaryMd"])
+}
 ```
 
-The SDK sends your key with the `x-api-key` header.
+Factor and portfolio helpers include `FactorCatalog`, `FactorReturns`, `FactorHistory`, `FactorSparklines`, `FactorDashboard`, `FactorScreen`, `FactorExtremeMoves`, `FactorExtremePairs`, `FactorValuations`, `FactorValuationStocks`, `FactorExposures`, `FactorDecomposition`, `FactorRelatedStocks`, `FactorSimilarityPack`, `FactorPairs`, `FactorPairHistory`, `FactorBulkDownload`, `FactorCustom`, `PortfolioAnalyze`, `PortfolioAttribution`, `PortfolioHedge`, `PortfolioOptimize`, `PortfolioStressTest`, `ModelPortfolioFactorView`, and `ModelFactorAnalysis`.
 
 ## Configuration
 
 ```go
-client := secapi.NewClient(os.Getenv("SECAPI_API_KEY"))
-client.BaseURL = "https://api.secapi.ai"
+apiKey := os.Getenv("SECAPI_API_KEY")
+client := secapi.NewClient(apiKey)
+client.BaseURL = "https://api.secapi.ai"  // default
 ```
 
 `NewSecApiClient` remains available as a compatibility alias for `NewClient`.
-
-## Common Workflows
-
-Resolve a company:
-
-```go
-entity, err := client.ResolveEntity(map[string]string{"ticker": "AAPL"})
-if err != nil {
-    panic(err)
-}
-fmt.Println(entity["name"])
-```
-
-Fetch the latest 10-K:
-
-```go
-filing, err := client.LatestFiling(map[string]string{
-    "ticker": "AAPL",
-    "form": "10-K",
-})
-if err != nil {
-    panic(err)
-}
-fmt.Println(filing["title"], filing["filingDate"])
-```
-
-Find high-risk dilution issuers:
-
-```go
-ratings, err := client.DilutionRatings(map[string]string{
-    "overall_risk": "high",
-    "limit": "10",
-})
-if err != nil {
-    panic(err)
-}
-fmt.Println(ratings["object"])
-```
-
-## Agent Setup
-
-Give this prompt to a coding agent:
-
-```text
-Install github.com/secapi-ai/secapi-go in this Go service. Start with one entity lookup to confirm auth, then add a filing or ownership workflow that preserves requestId, freshness, provenance, and trace metadata in structured logs. Use https://docs.secapi.ai/llms.txt as the documentation index and prefer the OpenAPI spec over guessing endpoint paths.
-```
-
-For broader agent instructions, use:
-
-- [`llms.txt`](https://docs.secapi.ai/llms.txt)
-- [Give this prompt to your agent](https://docs.secapi.ai/give-this-prompt-to-your-agent)
-- [LLM and agent guide](https://docs.secapi.ai/llm-guide)
 
 ## Environment Variables
 
@@ -114,22 +182,7 @@ For broader agent instructions, use:
 | `SECAPI_API_KEY` | SEC API key |
 | `SECAPI_BASE_URL` | API base URL override |
 
-## Validate
-
-```bash
-go test ./...
-go list -m github.com/secapi-ai/secapi-go
-```
-
 ## Links
 
-- [SEC API](https://secapi.ai)
-- [Developer docs](https://docs.secapi.ai)
-- [Go SDK guide](https://docs.secapi.ai/go-sdk)
-- [API reference](https://docs.secapi.ai/api-reference)
-- [API playground](https://docs.secapi.ai/api-playground)
-- [Libraries and SDKs](https://docs.secapi.ai/libraries-and-sdks)
-- [Auth and pricing](https://docs.secapi.ai/auth-and-pricing)
-- [Freshness and trust](https://docs.secapi.ai/freshness-and-trust)
-- [Status](https://docs.secapi.ai/status)
-- [Support](https://docs.secapi.ai/support)
+- [API Documentation](https://docs.secapi.ai)
+- [Go SDK Reference](https://docs.secapi.ai/go-sdk)

@@ -131,6 +131,18 @@ func (c *Client) SearchFilings(params map[string]string) (map[string]any, error)
 	return c.request(http.MethodGet, "/v1/filings", params, nil)
 }
 
+func (c *Client) SearchSections(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/sections/search", params, nil)
+}
+
+func (c *Client) SearchFulltext(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/search/fulltext", params, nil)
+}
+
+func (c *Client) SemanticSearch(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/search/semantic", params, nil)
+}
+
 func (c *Client) LatestFiling(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/filings/latest", params, nil)
 }
