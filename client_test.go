@@ -95,6 +95,27 @@ func TestRequestHeadersIdentifyGoSDKAndJsonContract(t *testing.T) {
 	}
 }
 
+func TestRequestDiagnosticsEscapesRequestID(t *testing.T) {
+	client, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+
+	payload, err := client.RequestDiagnostics("req/with space")
+	if err != nil {
+		t.Fatalf("RequestDiagnostics failed: %v", err)
+	}
+
+	if payload["ok"] != true {
+		t.Fatalf("payload = %#v, want ok response", payload)
+	}
+	request := (*captured)[0]
+	if request.Method != http.MethodGet {
+		t.Fatalf("method = %s, want GET", request.Method)
+	}
+	if request.Path != "/v1/diagnostics/requests/req%2Fwith%20space" {
+		t.Fatalf("path = %q, want escaped diagnostics path", request.Path)
+	}
+}
+
 func TestNewClientLoadsBearerTokenEnvironmentFallback(t *testing.T) {
 	t.Setenv("SECAPI_API_KEY", "")
 	t.Setenv("OMNI_DATASTREAM_API_KEY", "")

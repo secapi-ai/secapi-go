@@ -1444,10 +1444,6 @@ func (c *Client) MacroCreditRating(country string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/macro/credit-ratings/"+url.PathEscape(country), nil, nil)
 }
 
-func (c *Client) MacroStatus(params map[string]string) (map[string]any, error) {
-	return c.request(http.MethodGet, "/v1/macro/status", params, nil)
-}
-
 func (c *Client) CompanyIncomeStatements(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/companies/income-statements", params, nil)
 }
@@ -1572,10 +1568,6 @@ func (c *Client) FactorCustom(body any, params ...map[string]string) (map[string
 	return c.request(http.MethodPost, "/v1/factors/custom", firstParams(params), body)
 }
 
-func (c *Client) FactorMacroSensitivity(params map[string]string) (map[string]any, error) {
-	return c.request(http.MethodGet, "/v1/factors/macro-sensitivity", params, nil)
-}
-
 func (c *Client) StockLoadings(ticker string, params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/stocks/"+url.PathEscape(ticker)+"/loadings", params, nil)
 }
@@ -1628,10 +1620,6 @@ func (c *Client) PortfolioStressTest(body any, params ...map[string]string) (map
 	return c.request(http.MethodPost, "/v1/portfolio/stress-test", firstParams(params), body)
 }
 
-func (c *Client) PortfolioStressScenarios(params map[string]string) (map[string]any, error) {
-	return c.request(http.MethodGet, "/v1/portfolio/stress-test/scenarios", params, nil)
-}
-
 func (c *Client) IntelligenceSecurity(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/intelligence/security", params, nil)
 }
@@ -1640,16 +1628,8 @@ func (c *Client) IntelligenceCompany(params map[string]string) (map[string]any, 
 	return c.request(http.MethodGet, "/v1/intelligence/company", params, nil)
 }
 
-func (c *Client) RequestDiagnostics(requestID string) (map[string]any, error) {
-	return c.request(http.MethodGet, "/v1/diagnostics/requests/"+url.PathEscape(requestID), nil, nil)
-}
-
 func (c *Client) IntelligenceCountryReport(body any) (map[string]any, error) {
 	return c.request(http.MethodPost, "/v1/intelligence/country-report", nil, body)
-}
-
-func (c *Client) MacroInvestmentBriefing(body any, params ...map[string]string) (map[string]any, error) {
-	return c.request(http.MethodPost, "/v1/intelligence/country-report", firstParams(params), body)
 }
 
 func (c *Client) IntelligencePortfolio(body any) (map[string]any, error) {
@@ -1722,6 +1702,14 @@ func (c *Client) ListTraces(ids string) (map[string]any, error) {
 
 func (c *Client) GetTrace(traceID string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/traces/"+url.PathEscape(traceID), nil, nil)
+}
+
+func (c *Client) RequestDiagnostics(requestID string) (map[string]any, error) {
+	return c.RequestDiagnosticsWithContext(context.Background(), requestID)
+}
+
+func (c *Client) RequestDiagnosticsWithContext(ctx context.Context, requestID string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/diagnostics/requests/"+url.PathEscape(requestID), nil, nil)
 }
 
 func (c *Client) SegmentedRevenues(params map[string]string) (map[string]any, error) {
