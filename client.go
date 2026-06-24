@@ -29,7 +29,7 @@ const DefaultHTTPTimeout = 30 * time.Second
 const DefaultRetryInitialBackoff = 200 * time.Millisecond
 const DefaultRetryMaxBackoff = 2 * time.Second
 const DefaultRetryMaxRetries = 2
-const SDKVersion = "1.0.0"
+const SDKVersion = "1.0.1"
 const sdkUserAgent = "secapi-go/" + SDKVersion
 
 // UnlimitedPaginationCap disables a MaxPages or MaxItems cap in explicit
@@ -1408,6 +1408,10 @@ func (c *Client) NewsStories(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/news/stories", params, nil)
 }
 
+func (c *Client) MacroSearch(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/macro/search", params, nil)
+}
+
 func (c *Client) MacroIndicators(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/macro/indicators", params, nil)
 }
@@ -1430,6 +1434,14 @@ func (c *Client) MacroHighSignalPack(params map[string]string) (map[string]any, 
 
 func (c *Client) MacroRegimes(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/macro/regimes", params, nil)
+}
+
+func (c *Client) MacroCreditRatings(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/macro/credit-ratings", params, nil)
+}
+
+func (c *Client) MacroCreditRating(country string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/macro/credit-ratings/"+url.PathEscape(country), nil, nil)
 }
 
 func (c *Client) CompanyIncomeStatements(params map[string]string) (map[string]any, error) {

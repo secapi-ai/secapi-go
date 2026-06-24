@@ -411,7 +411,7 @@ client.HTTPClient = &http.Client{Timeout: 5 * time.Second}
 ```
 
 Requests include `Accept: application/json` and a `User-Agent` like
-`secapi-go/1.0.0` so support and server logs can identify SDK traffic.
+`secapi-go/1.0.1` so support and server logs can identify SDK traffic.
 
 Safe read requests retry transient network failures and 408/429/502/503/504
 responses twice by default. All requests retry 429 rate limits and honor
