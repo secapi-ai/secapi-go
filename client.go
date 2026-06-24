@@ -1704,6 +1704,14 @@ func (c *Client) GetTrace(traceID string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/traces/"+url.PathEscape(traceID), nil, nil)
 }
 
+func (c *Client) RequestDiagnostics(requestID string) (map[string]any, error) {
+	return c.RequestDiagnosticsWithContext(context.Background(), requestID)
+}
+
+func (c *Client) RequestDiagnosticsWithContext(ctx context.Context, requestID string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/diagnostics/requests/"+url.PathEscape(requestID), nil, nil)
+}
+
 func (c *Client) SegmentedRevenues(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/statements/segmented-revenues", params, nil)
 }
