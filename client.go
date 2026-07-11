@@ -796,6 +796,14 @@ func (s *SituationService) SummaryWithContext(ctx context.Context, situationID s
 	return s.client.SituationSummaryWithContext(ctx, situationID, params)
 }
 
+func (s *SituationService) UnderwritingPack(situationID string) (map[string]any, error) {
+	return s.client.SituationUnderwritingPack(situationID)
+}
+
+func (s *SituationService) UnderwritingPackWithContext(ctx context.Context, situationID string) (map[string]any, error) {
+	return s.client.SituationUnderwritingPackWithContext(ctx, situationID)
+}
+
 func (s *SituationService) Export(situationID string, params map[string]string) (string, error) {
 	return s.client.ExportSituation(situationID, params)
 }
@@ -1602,6 +1610,17 @@ func (c *Client) SituationSummary(situationID string, params map[string]string) 
 
 func (c *Client) SituationSummaryWithContext(ctx context.Context, situationID string, params map[string]string) (map[string]any, error) {
 	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/"+url.PathEscape(situationID)+"/summary", params, nil)
+}
+
+// SituationUnderwritingPack returns the public Special Situations underwriting
+// facade for a situation. The endpoint requires an API deployment with
+// datastream PR #1363.
+func (c *Client) SituationUnderwritingPack(situationID string) (map[string]any, error) {
+	return c.SituationUnderwritingPackWithContext(context.Background(), situationID)
+}
+
+func (c *Client) SituationUnderwritingPackWithContext(ctx context.Context, situationID string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/"+url.PathEscape(situationID)+"/underwriting-pack", nil, nil)
 }
 
 func (c *Client) ExportSituation(situationID string, params map[string]string) (string, error) {

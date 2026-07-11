@@ -135,8 +135,8 @@ constructors before using grouped fields.
 ## Special Situations
 
 Special Situations helpers cover the public SEC-derived situations API: list,
-detail, filings timeline, summary, Copy-for-LLM export, feed, calendar, stats,
-performance, and EDGAR form lookup.
+detail, filings timeline, summary, underwriting pack facade, Copy-for-LLM
+export, feed, calendar, stats, performance, and EDGAR form lookup.
 
 ```go
 client := secapi.NewClient(os.Getenv("SECAPI_API_KEY"))
@@ -174,13 +174,27 @@ if err != nil {
     panic(err)
 }
 fmt.Println(calendar["data"])
+
+pack, err := client.Situations.UnderwritingPack("sit_123")
+if err != nil {
+    panic(err)
+}
+fmt.Println(pack["summary"])
 ```
 
 Archive issue helpers read the immutable paid weekly issue archive:
 `client.Situations.Issues(...)` and `client.Situations.Issue(...)`, with flat
 aliases `ListSituationIssues` and `GetSituationIssue`. These archive endpoints
-depend on unmerged datastream PR #1363, so they require an API deployment that
-includes that server change before they will work against production.
+depend on pending datastream PR #1363 deployment, so they require an API
+deployment that includes that server change before they will work against
+production.
+
+The underwriting pack facade is available as grouped
+`client.Situations.UnderwritingPack(...)` or flat `client.SituationUnderwritingPack(...)`.
+It calls `GET /v1/situations/{id}/underwriting-pack`, returns only the public
+Special Situations facade payload, and does not expose internal/provider or TIKR
+data. Like the archive issue endpoints, it requires an API deployment that
+includes pending datastream PR #1363.
 
 ## Auto-pagination
 

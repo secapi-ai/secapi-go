@@ -1110,6 +1110,15 @@ func TestSituationWrappersRouteToPublicSituationPaths(t *testing.T) {
 			wantPath:  "/v1/situations/sit%2Fwith%20spaces/summary",
 			wantQuery: map[string]string{"response_mode": "compact"},
 		},
+		{
+			name: "underwriting pack",
+			call: func() error {
+				_, err := client.SituationUnderwritingPack("sit/with spaces")
+				return err
+			},
+			wantPath:  "/v1/situations/sit%2Fwith%20spaces/underwriting-pack",
+			wantQuery: nil,
+		},
 	}
 
 	for _, test := range calls {
@@ -1159,6 +1168,10 @@ func TestSituationServiceDelegatesToPublicRoutes(t *testing.T) {
 			return err
 		},
 		func() error { _, err := client.Situations.Summary("sit_123", nil); return err },
+		func() error {
+			_, err := client.Situations.UnderwritingPackWithContext(context.Background(), "sit/needs underwriting")
+			return err
+		},
 		func() error { _, err := client.Situations.Feed(map[string]string{"limit": "2"}); return err },
 		func() error { _, err := client.Situations.Calendar(map[string]string{"days": "30"}); return err },
 		func() error { _, err := client.Situations.Stats(map[string]string{"window": "7d"}); return err },
@@ -1181,6 +1194,7 @@ func TestSituationServiceDelegatesToPublicRoutes(t *testing.T) {
 		"/v1/situations/sit_123",
 		"/v1/situations/sit_123/filings",
 		"/v1/situations/sit_123/summary",
+		"/v1/situations/sit%2Fneeds%20underwriting/underwriting-pack",
 		"/v1/situations/feed",
 		"/v1/situations/calendar",
 		"/v1/situations/stats",
