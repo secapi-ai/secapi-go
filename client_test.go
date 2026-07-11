@@ -285,6 +285,15 @@ func TestGroupedServiceFieldsDelegateToFlatClientMethods(t *testing.T) {
 			wantPath:  "/v1/factors/dashboard",
 			wantQuery: map[string]string{"country": "US", "category": "style", "ticker": "AAPL", "response_mode": "compact"},
 		},
+		{
+			name: "situations list",
+			call: func() error {
+				_, err := client.Situations.List(map[string]string{"types": "tender_offer", "limit": "10", "response_mode": "compact"})
+				return err
+			},
+			wantPath:  "/v1/situations",
+			wantQuery: map[string]string{"types": "tender_offer", "limit": "10", "response_mode": "compact"},
+		},
 	}
 
 	for _, test := range calls {
@@ -320,7 +329,7 @@ func TestConstructorsInitializeGroupedServiceFields(t *testing.T) {
 	}
 
 	for i, client := range clients {
-		if client.Entities == nil || client.Filings == nil || client.Sections == nil || client.Search == nil || client.Factors == nil {
+		if client.Entities == nil || client.Filings == nil || client.Sections == nil || client.Search == nil || client.Factors == nil || client.Situations == nil {
 			t.Fatalf("client %d has nil grouped service field", i)
 		}
 	}
@@ -989,6 +998,239 @@ func TestMarketWrappersRouteToMarketPaths(t *testing.T) {
 	}
 	if !strings.Contains((*captured)[1].Query, "exchange=NASDAQ") {
 		t.Fatalf("market universe query missing exchange: %q", (*captured)[1].Query)
+	}
+}
+
+func TestSituationWrappersRouteToPublicSituationPaths(t *testing.T) {
+	client, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+
+	calls := []struct {
+		name      string
+		call      func() error
+		wantPath  string
+		wantQuery map[string]string
+	}{
+		{
+			name: "list",
+			call: func() error {
+				_, err := client.ListSituations(map[string]string{"types": "tender_offer,bankruptcy", "tickers": "AAPL", "limit": "25", "cursor": "50"})
+				return err
+			},
+			wantPath:  "/v1/situations",
+			wantQuery: map[string]string{"types": "tender_offer,bankruptcy", "tickers": "AAPL", "limit": "25", "cursor": "50"},
+		},
+		{
+			name: "archive issues",
+			call: func() error {
+				_, err := client.ListSituationIssues(map[string]string{"limit": "12", "response_mode": "compact"})
+				return err
+			},
+			wantPath:  "/v1/situations/issues",
+			wantQuery: map[string]string{"limit": "12", "response_mode": "compact"},
+		},
+		{
+			name: "archive issue detail",
+			call: func() error {
+				_, err := client.GetSituationIssue("special situations/issue 1", map[string]string{"response_mode": "compact"})
+				return err
+			},
+			wantPath:  "/v1/situations/issues/special%20situations%2Fissue%201",
+			wantQuery: map[string]string{"response_mode": "compact"},
+		},
+		{
+			name: "feed",
+			call: func() error {
+				_, err := client.SituationFeed(map[string]string{"categories": "event", "since": "2026-07-01", "limit": "10"})
+				return err
+			},
+			wantPath:  "/v1/situations/feed",
+			wantQuery: map[string]string{"categories": "event", "since": "2026-07-01", "limit": "10"},
+		},
+		{
+			name: "calendar",
+			call: func() error {
+				_, err := client.SituationCalendar(map[string]string{"date_types": "vote_date", "days": "45"})
+				return err
+			},
+			wantPath:  "/v1/situations/calendar",
+			wantQuery: map[string]string{"date_types": "vote_date", "days": "45"},
+		},
+		{
+			name: "stats",
+			call: func() error {
+				_, err := client.SituationStats(map[string]string{"window": "30d"})
+				return err
+			},
+			wantPath:  "/v1/situations/stats",
+			wantQuery: map[string]string{"window": "30d"},
+		},
+		{
+			name: "performance",
+			call: func() error {
+				_, err := client.SituationPerformance(map[string]string{"types": "tender_offer", "group_by": "subtype"})
+				return err
+			},
+			wantPath:  "/v1/situations/performance",
+			wantQuery: map[string]string{"types": "tender_offer", "group_by": "subtype"},
+		},
+		{
+			name: "by form",
+			call: func() error {
+				_, err := client.SituationsByForm("SC TO-I/A", map[string]string{"statuses": "open", "enrich": "false"})
+				return err
+			},
+			wantPath:  "/v1/situations/by-form/SC%20TO-I%2FA",
+			wantQuery: map[string]string{"statuses": "open", "enrich": "false"},
+		},
+		{
+			name: "detail",
+			call: func() error {
+				_, err := client.GetSituation("sit/with spaces", map[string]string{"enrich": "false"})
+				return err
+			},
+			wantPath:  "/v1/situations/sit%2Fwith%20spaces",
+			wantQuery: map[string]string{"enrich": "false"},
+		},
+		{
+			name: "filings",
+			call: func() error {
+				_, err := client.SituationFilings("sit/with spaces", map[string]string{"limit": "5", "cursor": "10"})
+				return err
+			},
+			wantPath:  "/v1/situations/sit%2Fwith%20spaces/filings",
+			wantQuery: map[string]string{"limit": "5", "cursor": "10"},
+		},
+		{
+			name: "summary",
+			call: func() error {
+				_, err := client.SituationSummary("sit/with spaces", map[string]string{"response_mode": "compact"})
+				return err
+			},
+			wantPath:  "/v1/situations/sit%2Fwith%20spaces/summary",
+			wantQuery: map[string]string{"response_mode": "compact"},
+		},
+	}
+
+	for _, test := range calls {
+		if err := test.call(); err != nil {
+			t.Fatalf("%s failed: %v", test.name, err)
+		}
+	}
+	if len(*captured) != len(calls) {
+		t.Fatalf("captured %d requests, want %d", len(*captured), len(calls))
+	}
+	for i, test := range calls {
+		request := (*captured)[i]
+		if request.Method != http.MethodGet {
+			t.Fatalf("%s method = %q, want GET", test.name, request.Method)
+		}
+		if request.Path != test.wantPath {
+			t.Fatalf("%s path = %q, want %q", test.name, request.Path, test.wantPath)
+		}
+		if strings.Contains(request.Path, "tikr") || strings.Contains(request.Path, "internal") {
+			t.Fatalf("%s path exposes an internal/provider namespace: %q", test.name, request.Path)
+		}
+		query, err := url.ParseQuery(request.Query)
+		if err != nil {
+			t.Fatalf("%s query parse failed: %v", test.name, err)
+		}
+		for key, value := range test.wantQuery {
+			if query.Get(key) != value {
+				t.Fatalf("%s query %s = %q, want %q in %q", test.name, key, query.Get(key), value, request.Query)
+			}
+		}
+	}
+}
+
+func TestSituationServiceDelegatesToPublicRoutes(t *testing.T) {
+	client, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+
+	calls := []func() error{
+		func() error { _, err := client.Situations.Issues(map[string]string{"limit": "3"}); return err },
+		func() error {
+			_, err := client.Situations.Issue("special-situations-digest-1-2026-07-10", nil)
+			return err
+		},
+		func() error { _, err := client.Situations.Get("sit_123", nil); return err },
+		func() error {
+			_, err := client.Situations.Filings("sit_123", map[string]string{"limit": "2"})
+			return err
+		},
+		func() error { _, err := client.Situations.Summary("sit_123", nil); return err },
+		func() error { _, err := client.Situations.Feed(map[string]string{"limit": "2"}); return err },
+		func() error { _, err := client.Situations.Calendar(map[string]string{"days": "30"}); return err },
+		func() error { _, err := client.Situations.Stats(map[string]string{"window": "7d"}); return err },
+		func() error {
+			_, err := client.Situations.Performance(map[string]string{"group_by": "type"})
+			return err
+		},
+		func() error { _, err := client.Situations.ByForm("8-K", map[string]string{"limit": "2"}); return err },
+	}
+
+	for _, call := range calls {
+		if err := call(); err != nil {
+			t.Fatalf("situation service call failed: %v", err)
+		}
+	}
+
+	wantPaths := []string{
+		"/v1/situations/issues",
+		"/v1/situations/issues/special-situations-digest-1-2026-07-10",
+		"/v1/situations/sit_123",
+		"/v1/situations/sit_123/filings",
+		"/v1/situations/sit_123/summary",
+		"/v1/situations/feed",
+		"/v1/situations/calendar",
+		"/v1/situations/stats",
+		"/v1/situations/performance",
+		"/v1/situations/by-form/8-K",
+	}
+	for i, want := range wantPaths {
+		if (*captured)[i].Path != want {
+			t.Fatalf("path %d = %q, want %q", i, (*captured)[i].Path, want)
+		}
+	}
+}
+
+func TestExportSituationReturnsMarkdownText(t *testing.T) {
+	captured := []capturedRequest{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = append(captured, capturedRequest{
+			Method: r.Method,
+			Path:   r.URL.EscapedPath(),
+			Query:  r.URL.RawQuery,
+			Header: r.Header.Clone(),
+		})
+		w.Header().Set("content-type", "text/markdown; charset=utf-8")
+		_, _ = w.Write([]byte("# Situation\n\nCopy-for-LLM export."))
+	}))
+	defer server.Close()
+
+	client := NewClient("")
+	client.BaseURL = server.URL
+	client.HTTPClient = server.Client()
+
+	markdown, err := client.Situations.Export("sit/with spaces", map[string]string{"response_mode": "compact"})
+	if err != nil {
+		t.Fatalf("ExportSituation failed: %v", err)
+	}
+	if markdown != "# Situation\n\nCopy-for-LLM export." {
+		t.Fatalf("markdown = %q, want raw text payload", markdown)
+	}
+	if captured[0].Path != "/v1/situations/sit%2Fwith%20spaces/export" {
+		t.Fatalf("path = %q, want escaped export route", captured[0].Path)
+	}
+	if captured[0].Method != http.MethodGet {
+		t.Fatalf("method = %q, want GET", captured[0].Method)
+	}
+	query, err := url.ParseQuery(captured[0].Query)
+	if err != nil {
+		t.Fatalf("parse export query: %v", err)
+	}
+	if query.Get("response_mode") != "compact" {
+		t.Fatalf("export query = %q, want response_mode=compact", captured[0].Query)
 	}
 }
 

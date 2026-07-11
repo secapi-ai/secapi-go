@@ -427,6 +427,7 @@ type Client struct {
 	Sections    *SectionService
 	Search      *SearchService
 	Factors     *FactorService
+	Situations  *SituationService
 }
 
 // APIError is returned for non-2xx SEC API responses.
@@ -483,6 +484,7 @@ func newClient(apiKey string, bearerToken string) *Client {
 	client.Sections = &SectionService{client: client}
 	client.Search = &SearchService{client: client}
 	client.Factors = &FactorService{client: client}
+	client.Situations = &SituationService{client: client}
 	return client
 }
 
@@ -740,6 +742,106 @@ func (s *FactorService) BulkDownload(params map[string]string) (map[string]any, 
 
 func (s *FactorService) Custom(body any, params ...map[string]string) (map[string]any, error) {
 	return s.client.FactorCustom(body, params...)
+}
+
+type SituationService struct {
+	client *Client
+}
+
+func (s *SituationService) List(params map[string]string) (map[string]any, error) {
+	return s.client.ListSituations(params)
+}
+
+func (s *SituationService) ListWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return s.client.ListSituationsWithContext(ctx, params)
+}
+
+func (s *SituationService) Issues(params map[string]string) (map[string]any, error) {
+	return s.client.ListSituationIssues(params)
+}
+
+func (s *SituationService) IssuesWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return s.client.ListSituationIssuesWithContext(ctx, params)
+}
+
+func (s *SituationService) Issue(issue string, params map[string]string) (map[string]any, error) {
+	return s.client.GetSituationIssue(issue, params)
+}
+
+func (s *SituationService) IssueWithContext(ctx context.Context, issue string, params map[string]string) (map[string]any, error) {
+	return s.client.GetSituationIssueWithContext(ctx, issue, params)
+}
+
+func (s *SituationService) Get(situationID string, params map[string]string) (map[string]any, error) {
+	return s.client.GetSituation(situationID, params)
+}
+
+func (s *SituationService) GetWithContext(ctx context.Context, situationID string, params map[string]string) (map[string]any, error) {
+	return s.client.GetSituationWithContext(ctx, situationID, params)
+}
+
+func (s *SituationService) Filings(situationID string, params map[string]string) (map[string]any, error) {
+	return s.client.SituationFilings(situationID, params)
+}
+
+func (s *SituationService) FilingsWithContext(ctx context.Context, situationID string, params map[string]string) (map[string]any, error) {
+	return s.client.SituationFilingsWithContext(ctx, situationID, params)
+}
+
+func (s *SituationService) Summary(situationID string, params map[string]string) (map[string]any, error) {
+	return s.client.SituationSummary(situationID, params)
+}
+
+func (s *SituationService) SummaryWithContext(ctx context.Context, situationID string, params map[string]string) (map[string]any, error) {
+	return s.client.SituationSummaryWithContext(ctx, situationID, params)
+}
+
+func (s *SituationService) Export(situationID string, params map[string]string) (string, error) {
+	return s.client.ExportSituation(situationID, params)
+}
+
+func (s *SituationService) ExportWithContext(ctx context.Context, situationID string, params map[string]string) (string, error) {
+	return s.client.ExportSituationWithContext(ctx, situationID, params)
+}
+
+func (s *SituationService) Feed(params map[string]string) (map[string]any, error) {
+	return s.client.SituationFeed(params)
+}
+
+func (s *SituationService) FeedWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return s.client.SituationFeedWithContext(ctx, params)
+}
+
+func (s *SituationService) Calendar(params map[string]string) (map[string]any, error) {
+	return s.client.SituationCalendar(params)
+}
+
+func (s *SituationService) CalendarWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return s.client.SituationCalendarWithContext(ctx, params)
+}
+
+func (s *SituationService) Stats(params map[string]string) (map[string]any, error) {
+	return s.client.SituationStats(params)
+}
+
+func (s *SituationService) StatsWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return s.client.SituationStatsWithContext(ctx, params)
+}
+
+func (s *SituationService) Performance(params map[string]string) (map[string]any, error) {
+	return s.client.SituationPerformance(params)
+}
+
+func (s *SituationService) PerformanceWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return s.client.SituationPerformanceWithContext(ctx, params)
+}
+
+func (s *SituationService) ByForm(form string, params map[string]string) (map[string]any, error) {
+	return s.client.SituationsByForm(form, params)
+}
+
+func (s *SituationService) ByFormWithContext(ctx context.Context, form string, params map[string]string) (map[string]any, error) {
+	return s.client.SituationsByFormWithContext(ctx, form, params)
 }
 
 func firstEnv(names ...string) string {
@@ -1064,7 +1166,65 @@ func (c *Client) request(method string, pathname string, params map[string]strin
 	return c.requestWithContext(context.Background(), method, pathname, params, body)
 }
 
+func (c *Client) requestTextWithContext(ctx context.Context, method string, pathname string, params map[string]string, body any) (string, error) {
+	raw, err := c.requestRawWithContext(ctx, method, pathname, params, body)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
 func (c *Client) requestWithContext(ctx context.Context, method string, pathname string, params map[string]string, body any) (map[string]any, error) {
+	responsePayload, res, err := c.requestRawResponseWithContext(ctx, method, pathname, params, body)
+	if err != nil {
+		return nil, err
+	}
+	if len(responsePayload) == 0 && isSuccessStatus(res.StatusCode) {
+		return nil, nil
+	}
+	if len(responsePayload) == 0 {
+		return nil, apiError(res, nil)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(responsePayload, &decoded); err != nil {
+		if !isSuccessStatus(res.StatusCode) {
+			return nil, &APIError{
+				StatusCode: res.StatusCode,
+				RequestID:  responseRequestID(res, nil),
+				Message:    strings.TrimSpace(string(responsePayload)),
+			}
+		}
+		return nil, err
+	}
+	if !isSuccessStatus(res.StatusCode) {
+		return nil, apiError(res, decoded)
+	}
+	return decoded, nil
+}
+
+func (c *Client) requestRawWithContext(ctx context.Context, method string, pathname string, params map[string]string, body any) ([]byte, error) {
+	responsePayload, res, err := c.requestRawResponseWithContext(ctx, method, pathname, params, body)
+	if err != nil {
+		return nil, err
+	}
+	if !isSuccessStatus(res.StatusCode) {
+		if len(responsePayload) == 0 {
+			return nil, apiError(res, nil)
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(responsePayload, &decoded); err == nil {
+			return nil, apiError(res, decoded)
+		}
+		return nil, &APIError{
+			StatusCode: res.StatusCode,
+			RequestID:  responseRequestID(res, nil),
+			Message:    strings.TrimSpace(string(responsePayload)),
+		}
+	}
+	return responsePayload, nil
+}
+
+func (c *Client) requestRawResponseWithContext(ctx context.Context, method string, pathname string, params map[string]string, body any) ([]byte, *http.Response, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1074,7 +1234,7 @@ func (c *Client) requestWithContext(ctx context.Context, method string, pathname
 	}
 	u, err := url.Parse(baseURL + pathname)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	query := u.Query()
 	for key, value := range params {
@@ -1089,7 +1249,7 @@ func (c *Client) requestWithContext(ctx context.Context, method string, pathname
 	if body != nil {
 		payload, err = json.Marshal(body)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
@@ -1102,7 +1262,7 @@ func (c *Client) requestWithContext(ctx context.Context, method string, pathname
 
 		req, err := http.NewRequestWithContext(ctx, method, u.String(), reader)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		req.Header.Set("content-type", "application/json")
 		req.Header.Set("accept", "application/json")
@@ -1119,52 +1279,32 @@ func (c *Client) requestWithContext(ctx context.Context, method string, pathname
 		if err != nil {
 			if isRetryableMethod(method) && ctx.Err() == nil && attempt < cfg.MaxRetries {
 				if sleepErr := sleepContext(ctx, retryDelay(attempt, cfg, nil)); sleepErr != nil {
-					return nil, sleepErr
+					return nil, nil, sleepErr
 				}
 				continue
 			}
-			return nil, err
+			return nil, nil, err
 		}
 
 		if shouldRetryResponse(method, res.StatusCode) && attempt < cfg.MaxRetries {
 			_, _ = io.Copy(io.Discard, res.Body)
 			_ = res.Body.Close()
 			if err := sleepContext(ctx, retryDelay(attempt, cfg, res)); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			continue
 		}
 		defer res.Body.Close()
 
 		if res.StatusCode == http.StatusNoContent {
-			return nil, nil
+			return nil, res, nil
 		}
 
 		responsePayload, err := io.ReadAll(res.Body)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if len(responsePayload) == 0 && isSuccessStatus(res.StatusCode) {
-			return nil, nil
-		}
-		if len(responsePayload) == 0 {
-			return nil, apiError(res, nil)
-		}
-		var decoded map[string]any
-		if err := json.Unmarshal(responsePayload, &decoded); err != nil {
-			if !isSuccessStatus(res.StatusCode) {
-				return nil, &APIError{
-					StatusCode: res.StatusCode,
-					RequestID:  responseRequestID(res, nil),
-					Message:    strings.TrimSpace(string(responsePayload)),
-				}
-			}
-			return nil, err
-		}
-		if !isSuccessStatus(res.StatusCode) {
-			return nil, apiError(res, decoded)
-		}
-		return decoded, nil
+		return responsePayload, res, nil
 	}
 }
 
@@ -1370,6 +1510,106 @@ func (c *Client) StatementAgentWithContext(ctx context.Context, statementKey str
 		return nil, err
 	}
 	return decodeResponse[AgentStatement](body)
+}
+
+func (c *Client) ListSituations(params map[string]string) (map[string]any, error) {
+	return c.ListSituationsWithContext(context.Background(), params)
+}
+
+func (c *Client) ListSituationsWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations", params, nil)
+}
+
+// ListSituationIssues reads the immutable paid weekly issue archive introduced
+// by datastream PR #1363. Calls require an API deployment that includes #1363.
+func (c *Client) ListSituationIssues(params map[string]string) (map[string]any, error) {
+	return c.ListSituationIssuesWithContext(context.Background(), params)
+}
+
+func (c *Client) ListSituationIssuesWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/issues", params, nil)
+}
+
+// GetSituationIssue reads an immutable weekly issue by number or slug. This
+// route depends on datastream PR #1363 being deployed by the API service.
+func (c *Client) GetSituationIssue(issue string, params map[string]string) (map[string]any, error) {
+	return c.GetSituationIssueWithContext(context.Background(), issue, params)
+}
+
+func (c *Client) GetSituationIssueWithContext(ctx context.Context, issue string, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/issues/"+url.PathEscape(issue), params, nil)
+}
+
+func (c *Client) SituationFeed(params map[string]string) (map[string]any, error) {
+	return c.SituationFeedWithContext(context.Background(), params)
+}
+
+func (c *Client) SituationFeedWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/feed", params, nil)
+}
+
+func (c *Client) SituationCalendar(params map[string]string) (map[string]any, error) {
+	return c.SituationCalendarWithContext(context.Background(), params)
+}
+
+func (c *Client) SituationCalendarWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/calendar", params, nil)
+}
+
+func (c *Client) SituationStats(params map[string]string) (map[string]any, error) {
+	return c.SituationStatsWithContext(context.Background(), params)
+}
+
+func (c *Client) SituationStatsWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/stats", params, nil)
+}
+
+func (c *Client) SituationPerformance(params map[string]string) (map[string]any, error) {
+	return c.SituationPerformanceWithContext(context.Background(), params)
+}
+
+func (c *Client) SituationPerformanceWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/performance", params, nil)
+}
+
+func (c *Client) SituationsByForm(form string, params map[string]string) (map[string]any, error) {
+	return c.SituationsByFormWithContext(context.Background(), form, params)
+}
+
+func (c *Client) SituationsByFormWithContext(ctx context.Context, form string, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/by-form/"+url.PathEscape(form), params, nil)
+}
+
+func (c *Client) GetSituation(situationID string, params map[string]string) (map[string]any, error) {
+	return c.GetSituationWithContext(context.Background(), situationID, params)
+}
+
+func (c *Client) GetSituationWithContext(ctx context.Context, situationID string, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/"+url.PathEscape(situationID), params, nil)
+}
+
+func (c *Client) SituationFilings(situationID string, params map[string]string) (map[string]any, error) {
+	return c.SituationFilingsWithContext(context.Background(), situationID, params)
+}
+
+func (c *Client) SituationFilingsWithContext(ctx context.Context, situationID string, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/"+url.PathEscape(situationID)+"/filings", params, nil)
+}
+
+func (c *Client) SituationSummary(situationID string, params map[string]string) (map[string]any, error) {
+	return c.SituationSummaryWithContext(context.Background(), situationID, params)
+}
+
+func (c *Client) SituationSummaryWithContext(ctx context.Context, situationID string, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/"+url.PathEscape(situationID)+"/summary", params, nil)
+}
+
+func (c *Client) ExportSituation(situationID string, params map[string]string) (string, error) {
+	return c.ExportSituationWithContext(context.Background(), situationID, params)
+}
+
+func (c *Client) ExportSituationWithContext(ctx context.Context, situationID string, params map[string]string) (string, error) {
+	return c.requestTextWithContext(ctx, http.MethodGet, "/v1/situations/"+url.PathEscape(situationID)+"/export", params, nil)
 }
 
 func (c *Client) Offerings(params map[string]string) (map[string]any, error) {

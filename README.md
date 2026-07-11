@@ -125,11 +125,62 @@ history, err := client.Factors.History("VALUE", map[string]string{
 ```
 
 Start with `client.Entities`, `client.Filings`, `client.Sections`,
-`client.Search`, and `client.Factors` when exploring. Use the flat methods when
-you need an endpoint outside those high-signal groups. The service fields are
-initialized by `secapi.NewClient`, `secapi.NewBearerTokenClient`, and
-`secapi.NewSecApiClient`; if you construct `Client` literals manually, continue
-using the flat methods or switch to the constructors before using grouped fields.
+`client.Search`, `client.Factors`, and `client.Situations` when exploring. Use
+the flat methods when you need an endpoint outside those high-signal groups. The
+service fields are initialized by `secapi.NewClient`,
+`secapi.NewBearerTokenClient`, and `secapi.NewSecApiClient`; if you construct
+`Client` literals manually, continue using the flat methods or switch to the
+constructors before using grouped fields.
+
+## Special Situations
+
+Special Situations helpers cover the public SEC-derived situations API: list,
+detail, filings timeline, summary, Copy-for-LLM export, feed, calendar, stats,
+performance, and EDGAR form lookup.
+
+```go
+client := secapi.NewClient(os.Getenv("SECAPI_API_KEY"))
+
+situations, err := client.Situations.List(map[string]string{
+    "types":         "tender_offer,bankruptcy",
+    "tickers":       "AAPL,MSFT",
+    "limit":         "10",
+    "response_mode": "compact",
+})
+if err != nil {
+    panic(err)
+}
+fmt.Println(situations["data"])
+
+detail, err := client.Situations.Get("sit_123", map[string]string{
+    "enrich": "true",
+})
+if err != nil {
+    panic(err)
+}
+fmt.Println(detail["headline"])
+
+markdown, err := client.Situations.Export("sit_123", nil)
+if err != nil {
+    panic(err)
+}
+fmt.Println(markdown)
+
+calendar, err := client.Situations.Calendar(map[string]string{
+    "days":       "45",
+    "date_types": "vote_date,tender_expiration",
+})
+if err != nil {
+    panic(err)
+}
+fmt.Println(calendar["data"])
+```
+
+Archive issue helpers read the immutable paid weekly issue archive:
+`client.Situations.Issues(...)` and `client.Situations.Issue(...)`, with flat
+aliases `ListSituationIssues` and `GetSituationIssue`. These archive endpoints
+depend on unmerged datastream PR #1363, so they require an API deployment that
+includes that server change before they will work against production.
 
 ## Auto-pagination
 
