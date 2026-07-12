@@ -124,7 +124,7 @@ if err := iter.Err(); err != nil {
 }
 ```
 
-Use `PaginateFilingsWithOptions`, `PaginateEntitiesWithOptions`, or `PaginateSectionsWithOptions` to cap pages or items in bounded workflows. The default iterator is unbounded; for an options-based iterator, set both caps to `secapi.UnlimitedPaginationCap` for the same behavior. A zero cap fetches zero results.
+Use `PaginateFilingsWithOptions`, `PaginateEntitiesWithOptions`, or `PaginateSectionsWithOptions` to cap pages or items in bounded workflows. The default iterator is unbounded; for an options-based iterator, set both caps to `secapi.UnlimitedPaginationCap` for the same behavior. Leaving both caps at zero fetches no results. When only one cap is positive, the other is treated as unlimited.
 
 ## Errors and authentication
 
