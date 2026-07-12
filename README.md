@@ -124,7 +124,7 @@ if err := iter.Err(); err != nil {
 }
 ```
 
-Use `PaginateFilingsWithOptions`, `PaginateEntitiesWithOptions`, or `PaginateSectionsWithOptions` to cap pages or items in bounded workflows.
+Use `PaginateFilingsWithOptions`, `PaginateEntitiesWithOptions`, or `PaginateSectionsWithOptions` to cap pages or items in bounded workflows. The default iterator is unbounded; for an options-based iterator, set both caps to `secapi.UnlimitedPaginationCap` for the same behavior. A zero cap fetches zero results.
 
 ## Errors and authentication
 
@@ -147,9 +147,13 @@ client := secapi.NewBearerTokenClient(os.Getenv("SECAPI_BEARER_TOKEN"))
 
 | Variable | Purpose |
 | --- | --- |
-| `SECAPI_API_KEY` | API-key fallback for `NewClient("")`. |
-| `SECAPI_BEARER_TOKEN` | Bearer-token fallback for `NewBearerTokenClient("")`. |
-| `SECAPI_BASE_URL` | Overrides the default API base URL. |
+| `SECAPI_API_KEY` | Recommended API-key fallback for `NewClient("")`. |
+| `SECAPI_BEARER_TOKEN` | Bearer-token fallback for `NewClient("")`; `NewBearerTokenClient("")` uses this value and does not fall back to an API key. |
+| `SECAPI_BASE_URL` | Recommended override for the default API base URL. |
+
+For compatibility with older SEC API integrations, the client also accepts `OMNI_DATASTREAM_API_KEY`, `OMNI_DATASTREAM_BEARER_TOKEN`, `SECAPI_API_BASE_URL`, `OMNI_DATASTREAM_BASE_URL`, and `OMNI_DATASTREAM_API_BASE_URL`.
+
+The default HTTP client times out after 30 seconds and makes two retry attempts. `GET` and `HEAD` requests retry transient network failures and `408`, `429`, `502`, `503`, and `504` responses; other methods retry `429` only. Set `RetryConfig.MaxRetries` to `0` to disable retries.
 
 ## Documentation
 
