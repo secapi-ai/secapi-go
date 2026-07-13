@@ -455,13 +455,17 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("sec api error: status=%d message=%s", e.StatusCode, message)
 }
 
+// NewClient creates an API-key client. If apiKey is empty, it uses
+// SECAPI_API_KEY (or the legacy OMNI_DATASTREAM_API_KEY) from the environment.
 func NewClient(apiKey string) *Client {
 	if strings.TrimSpace(apiKey) == "" {
 		apiKey = firstEnv("SECAPI_API_KEY", "OMNI_DATASTREAM_API_KEY")
 	}
-	return newClient(apiKey, firstEnv("SECAPI_BEARER_TOKEN", "OMNI_DATASTREAM_BEARER_TOKEN"))
+	return newClient(apiKey, "")
 }
 
+// NewBearerTokenClient creates a bearer-token client. If bearerToken is empty,
+// it uses SECAPI_BEARER_TOKEN (or the legacy OMNI_DATASTREAM_BEARER_TOKEN).
 func NewBearerTokenClient(bearerToken string) *Client {
 	if strings.TrimSpace(bearerToken) == "" {
 		bearerToken = firstEnv("SECAPI_BEARER_TOKEN", "OMNI_DATASTREAM_BEARER_TOKEN")
