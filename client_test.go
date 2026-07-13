@@ -116,19 +116,25 @@ func TestRequestDiagnosticsEscapesRequestID(t *testing.T) {
 	}
 }
 
-func TestNewClientLoadsBearerTokenEnvironmentFallback(t *testing.T) {
-	t.Setenv("SECAPI_API_KEY", "")
-	t.Setenv("OMNI_DATASTREAM_API_KEY", "")
-	t.Setenv("SECAPI_BEARER_TOKEN", "")
-	t.Setenv("OMNI_DATASTREAM_BEARER_TOKEN", "bearer_OMNI_FALLBACK")
+func TestNewClientIgnoresBearerTokenEnvironment(t *testing.T) {
+	t.Setenv("SECAPI_BEARER_TOKEN", "bearer_env_token")
 
-	client := NewClient("")
+	captureClient, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+	client := NewClient("api_key")
+	client.BaseURL = captureClient.BaseURL
+	client.HTTPClient = captureClient.HTTPClient
 
-	if client.APIKey != "" {
-		t.Fatalf("APIKey = %q, want empty when only bearer env is configured", client.APIKey)
+	if _, err := client.Health(); err != nil {
+		t.Fatalf("Health failed: %v", err)
 	}
-	if client.BearerToken != "bearer_OMNI_FALLBACK" {
-		t.Fatalf("BearerToken = %q, want compatibility env fallback", client.BearerToken)
+
+	request := (*captured)[0]
+	if request.Header.Get("X-Api-Key") != "api_key" {
+		t.Fatalf("X-Api-Key = %q, want API key", request.Header.Get("X-Api-Key"))
+	}
+	if request.Header.Get("Authorization") != "" {
+		t.Fatalf("Authorization = %q, want empty for API-key client", request.Header.Get("Authorization"))
 	}
 }
 

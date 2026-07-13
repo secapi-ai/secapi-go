@@ -461,7 +461,7 @@ func NewClient(apiKey string) *Client {
 	if strings.TrimSpace(apiKey) == "" {
 		apiKey = firstEnv("SECAPI_API_KEY", "OMNI_DATASTREAM_API_KEY")
 	}
-	return newClient(apiKey, firstEnv("SECAPI_BEARER_TOKEN", "OMNI_DATASTREAM_BEARER_TOKEN"))
+	return newClient(apiKey, "")
 }
 
 // NewBearerTokenClient creates a bearer-token client. If bearerToken is empty,
