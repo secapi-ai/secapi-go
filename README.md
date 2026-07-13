@@ -67,9 +67,11 @@ func main() {
 
 ## Authentication, errors, and retries
 
-`NewClient` sends the API key as `x-api-key`. Passing an empty key uses `SECAPI_API_KEY`; the default base URL is `https://api.secapi.ai`. For bearer-token authentication, use `secapi.NewBearerTokenClient` with `SECAPI_BEARER_TOKEN`.
+`NewClient` sends the API key as `x-api-key`. Normal machine integrations must use this header and must not send API keys as bearer tokens. Passing an empty key uses `SECAPI_API_KEY`; the default base URL is `https://api.secapi.ai`. Bearer credentials are route-specific human-session authentication: use `secapi.NewBearerTokenClient` with `SECAPI_BEARER_TOKEN` only when an endpoint explicitly documents bearer authentication.
 
 Non-2xx responses return `*secapi.APIError`, with the status code, API error code, message, request ID, and parsed response body. Log the request ID when contacting support.
+
+Within a function that has received `err`, inspect errors like this:
 
 ```go
 var apiErr *secapi.APIError
