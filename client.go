@@ -1,3 +1,5 @@
+// Package secapi provides a Go client for the SEC API. Use it to resolve
+// companies, retrieve filings and filing sections, and search SEC disclosures.
 package secapi
 
 import (
