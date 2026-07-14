@@ -1,6 +1,6 @@
 # SEC API Go SDK
 
-The official Go client for [SEC API](https://secapi.ai): resolve companies, retrieve filings, and search SEC disclosures.
+The official Go client for [SEC API](https://secapi.ai). Resolve companies, retrieve filings and filing sections, and search SEC disclosures from Go.
 
 ## Install
 
@@ -8,15 +8,15 @@ The official Go client for [SEC API](https://secapi.ai): resolve companies, retr
 go get github.com/secapi-ai/secapi-go
 ```
 
-## First call
+## Get started
 
-[Create an API key](https://secapi.ai/login), then keep it in your environment:
+[Create an API key](https://secapi.ai/login) and set it in your environment:
 
 ```bash
 export SECAPI_API_KEY="secapi_live_..."
 ```
 
-Resolve a company by ticker with the compact, typed entity response:
+Resolve a company by ticker. `ResolveAgent` returns a typed, compact entity response:
 
 ```go
 package main
@@ -49,7 +49,7 @@ func main() {
 }
 ```
 
-`ResolveAgent` requests `view=agent` and returns `*secapi.AgentEntity`. The response contains an entity `id`, `ticker`, `cik`, `name`, `primaryIdentifiers`, match metadata, and `requestId`:
+The response includes the entity `id`, `ticker`, `cik`, `name`, primary identifiers, match metadata, and `requestId`:
 
 ```json
 {
@@ -67,7 +67,7 @@ func main() {
 
 ## Authentication, errors, and retries
 
-`NewClient` sends the API key as `x-api-key`. Normal machine integrations must use this header and must not send API keys as bearer tokens. Passing an empty key uses `SECAPI_API_KEY`; the default base URL is `https://api.secapi.ai`. Bearer credentials are route-specific human-session authentication: use `secapi.NewBearerTokenClient` with `SECAPI_BEARER_TOKEN` only when an endpoint explicitly documents bearer authentication.
+`NewClient` sends the API key as `x-api-key`. It uses `SECAPI_API_KEY` when passed an empty string; the default base URL is `https://api.secapi.ai`. For an endpoint that explicitly documents bearer authentication, use `secapi.NewBearerTokenClient` with `SECAPI_BEARER_TOKEN`.
 
 Non-2xx responses return `*secapi.APIError`, with the status code, API error code, message, request ID, and parsed response body. Log the request ID when contacting support.
 
