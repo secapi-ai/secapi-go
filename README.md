@@ -1,6 +1,6 @@
 # SEC API Go SDK
 
-The official Go client for [SEC API](https://secapi.ai). Resolve companies, retrieve filings and filing sections, and search SEC disclosures from Go.
+The official Go client for [SEC API](https://secapi.ai), for resolving public companies and retrieving SEC filings, filing sections, and disclosure-search results.
 
 ## Install
 
@@ -8,15 +8,15 @@ The official Go client for [SEC API](https://secapi.ai). Resolve companies, retr
 go get github.com/secapi-ai/secapi-go
 ```
 
-## Get started
-
-[Create an API key](https://secapi.ai/login) and set it in your environment:
+Create an API key in the [SEC API dashboard](https://secapi.ai/login), then make it available to your application:
 
 ```bash
 export SECAPI_API_KEY="secapi_live_..."
 ```
 
-Resolve a company by ticker. `ResolveAgent` returns a typed, compact entity response:
+## First request
+
+Resolve a company by ticker. `ResolveAgent` requests SEC API's compact `view=agent` response and decodes it into `*secapi.AgentEntity`.
 
 ```go
 package main
@@ -36,9 +36,7 @@ func main() {
 	}
 
 	client := secapi.NewClient(apiKey)
-	entity, err := client.Entities.ResolveAgent(map[string]string{
-		"ticker": "AAPL",
-	})
+	entity, err := client.Entities.ResolveAgent(map[string]string{"ticker": "AAPL"})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,7 +47,7 @@ func main() {
 }
 ```
 
-The response includes the entity `id`, `ticker`, `cik`, `name`, primary identifiers, match metadata, and `requestId`:
+The result identifies the resolved company and records how the match was made:
 
 ```json
 {
@@ -65,13 +63,13 @@ The response includes the entity `id`, `ticker`, `cik`, `name`, primary identifi
 }
 ```
 
-## Authentication, errors, and retries
+## Authentication and errors
 
-`NewClient` sends the API key as `x-api-key`. It uses `SECAPI_API_KEY` when passed an empty string; the default base URL is `https://api.secapi.ai`. For an endpoint that explicitly documents bearer authentication, use `secapi.NewBearerTokenClient` with `SECAPI_BEARER_TOKEN`.
+`NewClient` sends the supplied key in the `x-api-key` header. Passing an empty string makes it read `SECAPI_API_KEY`; the client uses `https://api.secapi.ai` unless `SECAPI_BASE_URL` is set.
 
-Non-2xx responses return `*secapi.APIError`, with the status code, API error code, message, request ID, and parsed response body. Log the request ID when contacting support.
+For an endpoint that explicitly uses bearer authentication, construct a separate client with `secapi.NewBearerTokenClient`. It accepts a token directly or reads `SECAPI_BEARER_TOKEN` when passed an empty string.
 
-Within a function that has received `err`, inspect errors like this:
+Every non-2xx API response is returned as `*secapi.APIError`. It preserves the HTTP status, API code, message, request ID, and decoded response body. Preserve the request ID when reporting an issue:
 
 ```go
 var apiErr *secapi.APIError
@@ -80,15 +78,16 @@ if errors.As(err, &apiErr) {
 }
 ```
 
-The client uses a 30-second HTTP timeout and retries up to twice by default. It honors `Retry-After` (capped at two seconds), retries `429` responses, and retries transient transport and `408`/`502`/`503`/`504` failures only for `GET` and `HEAD` requests. Configure `client.RetryConfig` for a different policy.
+The default HTTP timeout is 30 seconds. The client retries transient transport failures and `408`, `429`, `502`, `503`, and `504` responses according to the request method and retry policy; configure `client.RetryConfig` to change it.
 
-## Documentation and support
+## More usage
 
-- [SEC API documentation](https://docs.secapi.ai)
+- [Basic example](examples/basic/main.go): resolve an entity and print its typed response.
+- [Filing and section workflow](examples/agent_workflow/main.go): resolve a company, fetch its latest 10-K, and retrieve Item 1A.
 - [Entity resolution reference](https://docs.secapi.ai/api-reference/entities/get-v1-entities-resolve)
+- [SEC API documentation](https://docs.secapi.ai)
 - [API conventions](https://docs.secapi.ai/api-conventions)
-- [Report an issue or request support](https://github.com/secapi-ai/secapi-go/issues)
 
-## Compatibility and status
+## Compatibility and support
 
-This SDK requires Go 1.23 or later.
+This module requires Go 1.23 or later. The current client sends SEC API version `2026-03-19` by default. Report SDK bugs and request support through the [issue tracker](https://github.com/secapi-ai/secapi-go/issues); include the API request ID for API-response problems.
