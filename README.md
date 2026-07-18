@@ -97,4 +97,4 @@ The default HTTP timeout is 30 seconds. The client retries transient transport f
 
 ## Compatibility and support
 
-This module requires Go 1.23 or later. The current client sends SEC API version `2026-03-19` by default. Report SDK bugs and request support through the [issue tracker](https://github.com/secapi-ai/secapi-go/issues); include the API request ID for API-response problems.
+This module requires Go 1.23 or later. The current client sends SEC API version `2026-03-19` by default. Report SDK bugs and request support through [SEC API Support](https://secapi.ai/support); include the API request ID for API-response problems.
