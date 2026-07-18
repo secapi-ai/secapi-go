@@ -1,6 +1,6 @@
 # SEC API Go SDK
 
-The official Go client for [SEC API](https://secapi.ai), for resolving public companies and retrieving SEC filings, filing sections, and disclosure-search results.
+The official Go client for [SEC API](https://secapi.ai). Resolve public companies, retrieve SEC filings and filing sections, and search SEC disclosures.
 
 ## Install
 
@@ -8,7 +8,7 @@ The official Go client for [SEC API](https://secapi.ai), for resolving public co
 go get github.com/secapi-ai/secapi-go
 ```
 
-Create an API key in the [SEC API dashboard](https://secapi.ai/login), then make it available to your application:
+Create an API key in the [SEC API dashboard](https://secapi.ai/login), then set it for your application:
 
 ```bash
 export SECAPI_API_KEY="secapi_live_..."
@@ -16,7 +16,7 @@ export SECAPI_API_KEY="secapi_live_..."
 
 ## First request
 
-Resolve a company by ticker. `ResolveAgent` requests SEC API's compact `view=agent` response and decodes it into `*secapi.AgentEntity`.
+Resolve a company by ticker. `ResolveAgent` requests `view=agent` and returns a typed `*secapi.AgentEntity`.
 
 ```go
 package main
@@ -47,7 +47,7 @@ func main() {
 }
 ```
 
-The result identifies the resolved company and records how the match was made:
+The response contains the resolved company, the matching basis, and a request ID for support:
 
 ```json
 {
@@ -63,22 +63,29 @@ The result identifies the resolved company and records how the match was made:
 }
 ```
 
+Filing and statement responses also preserve source fields where available, including `filingUrl` and `sources[].sourceUrl`. See the [filing and section workflow](examples/agent_workflow/main.go) for a request that fetches the latest 10-K and Item 1A.
+
 ## Authentication and errors
 
 `NewClient` sends the supplied key in the `x-api-key` header. Passing an empty string makes it read `SECAPI_API_KEY`; the client uses `https://api.secapi.ai` unless `SECAPI_BASE_URL` is set.
 
 For an endpoint that explicitly uses bearer authentication, construct a separate client with `secapi.NewBearerTokenClient`. It accepts a token directly or reads `SECAPI_BEARER_TOKEN` when passed an empty string.
 
-Every non-2xx API response is returned as `*secapi.APIError`. It preserves the HTTP status, API code, message, request ID, and decoded response body. Preserve the request ID when reporting an issue:
+Every non-2xx API response is returned as `*secapi.APIError`. It preserves the HTTP status, API code, message, request ID, and decoded response body. Capture the request ID when reporting an issue:
 
 ```go
+import (
+	"errors"
+	"log"
+)
+
 var apiErr *secapi.APIError
 if errors.As(err, &apiErr) {
 	log.Printf("SEC API request %s failed: %s (%d)", apiErr.RequestID, apiErr.Code, apiErr.StatusCode)
 }
 ```
 
-The default HTTP timeout is 30 seconds. The client retries transient transport failures and `408`, `429`, `502`, `503`, and `504` responses according to the request method and retry policy; configure `client.RetryConfig` to change it.
+The default HTTP timeout is 30 seconds. The client retries transient transport failures and `408`, `502`, `503`, and `504` for `GET` and `HEAD` requests; it also retries `429` responses. Configure `client.RetryConfig` to change the retry policy.
 
 ## More usage
 
