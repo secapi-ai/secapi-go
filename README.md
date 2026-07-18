@@ -8,7 +8,7 @@ The official Go client for [SEC API](https://secapi.ai). Resolve public companie
 go get github.com/secapi-ai/secapi-go
 ```
 
-Create an API key in the [SEC API dashboard](https://secapi.ai/login), then set it for your application:
+Create an API key in the [SEC API dashboard](https://secapi.ai/login). See [pricing](https://secapi.ai/pricing) before putting recurring workloads into production, then set the key for your application:
 
 ```bash
 export SECAPI_API_KEY="secapi_live_..."
