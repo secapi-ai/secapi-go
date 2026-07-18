@@ -23,6 +23,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 
@@ -38,6 +39,10 @@ func main() {
 	client := secapi.NewClient(apiKey)
 	entity, err := client.Entities.ResolveAgent(map[string]string{"ticker": "AAPL"})
 	if err != nil {
+		var apiErr *secapi.APIError
+		if errors.As(err, &apiErr) {
+			log.Fatalf("SEC API request %s failed: %s (%d)", apiErr.RequestID, apiErr.Code, apiErr.StatusCode)
+		}
 		log.Fatal(err)
 	}
 
@@ -71,19 +76,7 @@ Filing and statement responses also preserve source fields where available, incl
 
 For an endpoint that explicitly uses bearer authentication, construct a separate client with `secapi.NewBearerTokenClient`. It accepts a token directly or reads `SECAPI_BEARER_TOKEN` when passed an empty string.
 
-Every non-2xx API response is returned as `*secapi.APIError`. It preserves the HTTP status, API code, message, request ID, and decoded response body. Capture the request ID when reporting an issue:
-
-```go
-import (
-	"errors"
-	"log"
-)
-
-var apiErr *secapi.APIError
-if errors.As(err, &apiErr) {
-	log.Printf("SEC API request %s failed: %s (%d)", apiErr.RequestID, apiErr.Code, apiErr.StatusCode)
-}
-```
+Every non-2xx API response is returned as `*secapi.APIError`. It preserves the HTTP status, API code, message, request ID, and decoded response body; the first-request program shows how to capture the request ID when reporting an issue.
 
 The default HTTP timeout is 30 seconds. The client retries transient transport failures and `408`, `502`, `503`, and `504` for `GET` and `HEAD` requests; it also retries `429` responses. Configure `client.RetryConfig` to change the retry policy.
 
