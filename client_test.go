@@ -116,25 +116,19 @@ func TestRequestDiagnosticsEscapesRequestID(t *testing.T) {
 	}
 }
 
-func TestNewClientIgnoresBearerTokenEnvironment(t *testing.T) {
-	t.Setenv("SECAPI_BEARER_TOKEN", "bearer_env_token")
+func TestNewClientLoadsBearerTokenEnvironmentFallback(t *testing.T) {
+	t.Setenv("SECAPI_API_KEY", "")
+	t.Setenv("OMNI_DATASTREAM_API_KEY", "")
+	t.Setenv("SECAPI_BEARER_TOKEN", "")
+	t.Setenv("OMNI_DATASTREAM_BEARER_TOKEN", "bearer_OMNI_FALLBACK")
 
-	captureClient, captured, closeServer := newCaptureClient(t)
-	defer closeServer()
-	client := NewClient("api_key")
-	client.BaseURL = captureClient.BaseURL
-	client.HTTPClient = captureClient.HTTPClient
+	client := NewClient("")
 
-	if _, err := client.Health(); err != nil {
-		t.Fatalf("Health failed: %v", err)
+	if client.APIKey != "" {
+		t.Fatalf("APIKey = %q, want empty when only bearer env is configured", client.APIKey)
 	}
-
-	request := (*captured)[0]
-	if request.Header.Get("X-Api-Key") != "api_key" {
-		t.Fatalf("X-Api-Key = %q, want API key", request.Header.Get("X-Api-Key"))
-	}
-	if request.Header.Get("Authorization") != "" {
-		t.Fatalf("Authorization = %q, want empty for API-key client", request.Header.Get("Authorization"))
+	if client.BearerToken != "bearer_OMNI_FALLBACK" {
+		t.Fatalf("BearerToken = %q, want compatibility env fallback", client.BearerToken)
 	}
 }
 
@@ -541,6 +535,112 @@ func TestRetriesPOSTOnRateLimitStatus(t *testing.T) {
 	}
 }
 
+func TestRetriesRateLimitWithStructuredRetryTiming(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		w.Header().Set("content-type", "application/json")
+		if attempts == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"code":"rate_limited","message":"try again","details":{"retryAfterMs":0}}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer server.Close()
+
+	client := NewClient("")
+	client.BaseURL = server.URL
+	client.HTTPClient = server.Client()
+	client.RetryConfig = RetryConfig{MaxRetries: 1, InitialBackoff: time.Hour, MaxBackoff: time.Hour}
+
+	startedAt := time.Now()
+	result, err := client.PortfolioAnalyze(map[string]any{"holdings": []map[string]any{{"symbol": "AAPL", "weight": 1}}})
+	if err != nil {
+		t.Fatalf("PortfolioAnalyze failed after structured retry timing: %v", err)
+	}
+	if time.Since(startedAt) > 200*time.Millisecond {
+		t.Fatalf("retry ignored structured retry timing and slept too long")
+	}
+	if result["ok"] != true {
+		t.Fatalf("result = %#v, want ok true", result)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+}
+
+func TestRetryAfterHeaderPrecedesStructuredRetryTiming(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		w.Header().Set("content-type", "application/json")
+		if attempts == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"code":"rate_limited","message":"try again","retryAfterSeconds":60}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer server.Close()
+
+	client := NewClient("")
+	client.BaseURL = server.URL
+	client.HTTPClient = server.Client()
+	client.RetryConfig = RetryConfig{MaxRetries: 1, InitialBackoff: time.Hour, MaxBackoff: time.Hour}
+
+	startedAt := time.Now()
+	result, err := client.PortfolioAnalyze(map[string]any{"holdings": []map[string]any{{"symbol": "AAPL", "weight": 1}}})
+	if err != nil {
+		t.Fatalf("PortfolioAnalyze failed after Retry-After retry: %v", err)
+	}
+	if time.Since(startedAt) > 200*time.Millisecond {
+		t.Fatalf("retry ignored Retry-After header precedence and slept too long")
+	}
+	if result["ok"] != true {
+		t.Fatalf("result = %#v, want ok true", result)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+}
+
+func TestRetriesSafeGETWithNestedStructuredRetryTiming(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		w.Header().Set("content-type", "application/json")
+		if attempts == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"code":-32006,"message":"mcp_tool_circuit_open","data":{"retryAfterSeconds":0}}}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer server.Close()
+
+	client := NewClient("")
+	client.BaseURL = server.URL
+	client.HTTPClient = server.Client()
+	client.RetryConfig = RetryConfig{MaxRetries: 1, InitialBackoff: time.Hour, MaxBackoff: time.Hour}
+
+	startedAt := time.Now()
+	result, err := client.LatestFiling(map[string]string{"ticker": "AAPL"})
+	if err != nil {
+		t.Fatalf("LatestFiling failed after nested structured retry timing: %v", err)
+	}
+	if time.Since(startedAt) > 200*time.Millisecond {
+		t.Fatalf("retry ignored nested structured retry timing and slept too long")
+	}
+	if result["ok"] != true {
+		t.Fatalf("result = %#v, want ok true", result)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+}
+
 func TestDoesNotRetryPOSTOnTransportError(t *testing.T) {
 	attempts := 0
 	client := NewClient("")
@@ -770,6 +870,443 @@ func TestSearchWrappersRouteToSearchPaths(t *testing.T) {
 	}
 }
 
+func TestPublicEarningsWrappersRouteToPublicPaths(t *testing.T) {
+	client, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+
+	if _, err := client.IntelligenceEarningsPreview(map[string]string{"ticker": "AAPL", "view": "compact"}); err != nil {
+		t.Fatalf("IntelligenceEarningsPreview failed: %v", err)
+	}
+	if _, err := client.EarningsTranscripts(map[string]string{"ticker": "AAPL", "limit": "3"}); err != nil {
+		t.Fatalf("EarningsTranscripts failed: %v", err)
+	}
+
+	wantPaths := []string{"/v1/intelligence/earnings-preview", "/v1/earnings/transcripts"}
+	for i, want := range wantPaths {
+		if (*captured)[i].Path != want {
+			t.Fatalf("path %d = %q, want %q", i, (*captured)[i].Path, want)
+		}
+		if (*captured)[i].Method != http.MethodGet {
+			t.Fatalf("method %d = %q, want GET", i, (*captured)[i].Method)
+		}
+	}
+	if !strings.Contains((*captured)[0].Query, "ticker=AAPL") || !strings.Contains((*captured)[0].Query, "view=compact") {
+		t.Fatalf("earnings preview query missing params: %q", (*captured)[0].Query)
+	}
+	if !strings.Contains((*captured)[1].Query, "ticker=AAPL") || !strings.Contains((*captured)[1].Query, "limit=3") {
+		t.Fatalf("earnings transcripts query missing params: %q", (*captured)[1].Query)
+	}
+}
+
+func TestEmbedSituationHelpersRouteToPublicSurface(t *testing.T) {
+	client, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+
+	if _, err := client.EmbedSituations(map[string]string{"limit": "20", "tickers": "AAPL"}); err != nil {
+		t.Fatalf("EmbedSituations failed: %v", err)
+	}
+	if _, err := client.EmbedSituationsFeed(map[string]string{"limit": "5", "types": "merger"}); err != nil {
+		t.Fatalf("EmbedSituationsFeed failed: %v", err)
+	}
+	if _, err := client.EmbedSituationsFeedRSS(map[string]string{"types": "merger"}); err != nil {
+		t.Fatalf("EmbedSituationsFeedRSS failed: %v", err)
+	}
+	if _, err := client.EmbedSituationsStats(nil); err != nil {
+		t.Fatalf("EmbedSituationsStats failed: %v", err)
+	}
+	if _, err := client.EmbedSituation("sit/with spaces", nil); err != nil {
+		t.Fatalf("EmbedSituation failed: %v", err)
+	}
+	if _, err := client.EmbedSituationExport("sit/with spaces", nil); err != nil {
+		t.Fatalf("EmbedSituationExport failed: %v", err)
+	}
+	if _, err := client.EmbedSituationIssues(map[string]string{"limit": "12"}); err != nil {
+		t.Fatalf("EmbedSituationIssues failed: %v", err)
+	}
+	if _, err := client.EmbedSituationIssue("special/situations digest 22"); err != nil {
+		t.Fatalf("EmbedSituationIssue failed: %v", err)
+	}
+
+	wantPaths := []string{
+		"/v1/embed/situations",
+		"/v1/embed/situations/feed",
+		"/v1/embed/situations/feed.rss",
+		"/v1/embed/situations/stats",
+		"/v1/embed/situations/sit%2Fwith%20spaces",
+		"/v1/embed/situations/sit%2Fwith%20spaces/export",
+		"/v1/embed/situations/issues",
+		"/v1/embed/situations/issues/special%2Fsituations%20digest%2022",
+	}
+	for i, want := range wantPaths {
+		if (*captured)[i].Path != want {
+			t.Fatalf("path %d = %q, want %q", i, (*captured)[i].Path, want)
+		}
+		if (*captured)[i].Method != http.MethodGet {
+			t.Fatalf("method %d = %q, want GET", i, (*captured)[i].Method)
+		}
+	}
+	query, err := url.ParseQuery((*captured)[0].Query)
+	if err != nil {
+		t.Fatalf("embed list query parse failed: %v", err)
+	}
+	if query.Get("limit") != "20" || query.Get("tickers") != "AAPL" {
+		t.Fatalf("embed list query = %q, want limit/tickers", (*captured)[0].Query)
+	}
+	feedQuery, err := url.ParseQuery((*captured)[1].Query)
+	if err != nil {
+		t.Fatalf("embed feed query parse failed: %v", err)
+	}
+	if feedQuery.Get("limit") != "5" || feedQuery.Get("types") != "merger" {
+		t.Fatalf("embed feed query = %q, want limit/types", (*captured)[1].Query)
+	}
+	issueQuery, err := url.ParseQuery((*captured)[6].Query)
+	if err != nil {
+		t.Fatalf("embed issue query parse failed: %v", err)
+	}
+	if issueQuery.Get("limit") != "12" {
+		t.Fatalf("issue query = %q, want limit=12", (*captured)[6].Query)
+	}
+}
+
+func TestPaidSituationHelpersRouteToAuthenticatedSurface(t *testing.T) {
+	client, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+
+	calls := []func() error{
+		func() error {
+			_, err := client.ListSituations(map[string]string{"types": "merger, tender_offer", "limit": "20"})
+			return err
+		},
+		func() error {
+			_, err := client.GetSituation("sit/with spaces", map[string]string{"enrich": "false"})
+			return err
+		},
+		func() error {
+			_, err := client.SituationsByForm("SC 13D", map[string]string{"tickers": "AAPL, MSFT"})
+			return err
+		},
+		func() error {
+			_, err := client.SituationsFeed(map[string]string{"tickers": "AAPL, MSFT"})
+			return err
+		},
+		func() error {
+			_, err := client.SituationsIssues(map[string]string{"limit": "12"})
+			return err
+		},
+		func() error {
+			_, err := client.SituationIssue("special/situations digest 22", nil)
+			return err
+		},
+		func() error {
+			_, err := client.SituationsCalendar(map[string]string{"statuses": "pending"})
+			return err
+		},
+		func() error {
+			_, err := client.SituationsStats(map[string]string{"window": "30d"})
+			return err
+		},
+		func() error {
+			_, err := client.SituationFilings("sit/with spaces", map[string]string{"limit": "10"})
+			return err
+		},
+		func() error {
+			_, err := client.SituationSummary("sit/with spaces", nil)
+			return err
+		},
+		func() error {
+			_, err := client.ExportSituation("sit/with spaces", nil)
+			return err
+		},
+		func() error {
+			_, err := client.UnderwriteSituation("sit/with spaces", nil)
+			return err
+		},
+	}
+	for i, call := range calls {
+		if err := call(); err != nil {
+			t.Fatalf("call %d failed: %v", i, err)
+		}
+	}
+
+	want := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/v1/situations"},
+		{http.MethodGet, "/v1/situations/sit%2Fwith%20spaces"},
+		{http.MethodGet, "/v1/situations/by-form/SC%2013D"},
+		{http.MethodGet, "/v1/situations/feed"},
+		{http.MethodGet, "/v1/situations/issues"},
+		{http.MethodGet, "/v1/situations/issues/special%2Fsituations%20digest%2022"},
+		{http.MethodGet, "/v1/situations/calendar"},
+		{http.MethodGet, "/v1/situations/stats"},
+		{http.MethodGet, "/v1/situations/sit%2Fwith%20spaces/filings"},
+		{http.MethodGet, "/v1/situations/sit%2Fwith%20spaces/summary"},
+		{http.MethodGet, "/v1/situations/sit%2Fwith%20spaces/export"},
+		{http.MethodGet, "/v1/situations/sit%2Fwith%20spaces/underwriting-pack"},
+	}
+	for i, expected := range want {
+		if (*captured)[i].Method != expected.method || (*captured)[i].Path != expected.path {
+			t.Fatalf("request %d = %s %s, want %s %s", i, (*captured)[i].Method, (*captured)[i].Path, expected.method, expected.path)
+		}
+	}
+	query, err := url.ParseQuery((*captured)[0].Query)
+	if err != nil {
+		t.Fatalf("list query parse failed: %v", err)
+	}
+	if query.Get("types") != "merger,tender_offer" || query.Get("limit") != "20" {
+		t.Fatalf("list query = %q, want normalized types/limit", (*captured)[0].Query)
+	}
+}
+
+func TestTypedSituationRequestBuildersRouteToAuthenticatedSurface(t *testing.T) {
+	client, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+
+	if _, err := client.Situations.ListWithParams(SituationListParams{
+		Types:        " merger, tender_offer ",
+		Statuses:     "announced",
+		MarketCap:    "large",
+		Limit:        "25",
+		ResponseMode: "agent",
+	}); err != nil {
+		t.Fatalf("ListWithParams failed: %v", err)
+	}
+	if _, err := client.Situations.FeedWithParams(SituationFeedParams{
+		Types:      "merger",
+		Categories: "merger_acquisition",
+		Tickers:    "AAPL, MSFT",
+		Country:    "US",
+		Since:      "2026-07-01T00:00:00.000Z",
+		Limit:      "10",
+	}); err != nil {
+		t.Fatalf("FeedWithParams failed: %v", err)
+	}
+	if _, err := client.Situations.FeedRSSWithParams(SituationFeedRSSParams{
+		Types:      "merger",
+		Categories: "merger_acquisition",
+		Tickers:    "AAPL, MSFT",
+		Country:    "US",
+		Since:      "2026-07-01T00:00:00.000Z",
+	}); err != nil {
+		t.Fatalf("FeedRSSWithParams failed: %v", err)
+	}
+	if _, err := client.Situations.GetWithParams("sit/with spaces", SituationMemberParams{Enrich: "false"}); err != nil {
+		t.Fatalf("GetWithParams failed: %v", err)
+	}
+	if _, err := client.Situations.FilingsWithParams("sit/with spaces", SituationMemberParams{Limit: "5"}); err != nil {
+		t.Fatalf("FilingsWithParams failed: %v", err)
+	}
+
+	if (*captured)[0].Path != "/v1/situations" {
+		t.Fatalf("list path = %q", (*captured)[0].Path)
+	}
+	listQuery, err := url.ParseQuery((*captured)[0].Query)
+	if err != nil {
+		t.Fatalf("list query parse failed: %v", err)
+	}
+	if listQuery.Get("types") != "merger,tender_offer" || listQuery.Get("market_cap") != "large" || listQuery.Get("response_mode") != "agent" {
+		t.Fatalf("typed list query = %q, want OpenAPI parameter names", (*captured)[0].Query)
+	}
+	feedQuery, err := url.ParseQuery((*captured)[1].Query)
+	if err != nil {
+		t.Fatalf("feed query parse failed: %v", err)
+	}
+	if feedQuery.Get("categories") != "merger_acquisition" || feedQuery.Get("tickers") != "AAPL,MSFT" || feedQuery.Get("country") != "US" {
+		t.Fatalf("typed feed query = %q, want normalized categories/tickers", (*captured)[1].Query)
+	}
+	rssQuery, err := url.ParseQuery((*captured)[2].Query)
+	if err != nil {
+		t.Fatalf("rss query parse failed: %v", err)
+	}
+	if rssQuery.Get("categories") != "merger_acquisition" || rssQuery.Get("tickers") != "AAPL,MSFT" || rssQuery.Get("country") != "US" || rssQuery.Get("limit") != "" {
+		t.Fatalf("typed rss query = %q, want RSS-compatible parameters only", (*captured)[2].Query)
+	}
+	if (*captured)[3].Path != "/v1/situations/sit%2Fwith%20spaces" || (*captured)[4].Path != "/v1/situations/sit%2Fwith%20spaces/filings" {
+		t.Fatalf("typed member paths = %q / %q", (*captured)[3].Path, (*captured)[4].Path)
+	}
+}
+
+func TestWatchSituationsUsesWatchlistAliasSurface(t *testing.T) {
+	captureClient, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+	client := NewBearerTokenClient("human_bearer")
+	client.BaseURL = captureClient.BaseURL
+	client.HTTPClient = captureClient.HTTPClient
+
+	_, err := client.Situations.Watch(SituationWatchParams{
+		Name:    "  Deals  ",
+		Filters: map[string][]string{"types": {"merger"}, "tickers": {" AAPL "}},
+		StartAt: "2026-07-13T00:00:00Z",
+		Delivery: SituationWatchDelivery{
+			Email: " desk@example.com ",
+		},
+	})
+	if err != nil {
+		t.Fatalf("WatchSituations failed: %v", err)
+	}
+
+	if (*captured)[0].Method != http.MethodPost || (*captured)[0].Path != "/v1/situations/watchlists" {
+		t.Fatalf("watch request = %s %s, want POST /v1/situations/watchlists", (*captured)[0].Method, (*captured)[0].Path)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte((*captured)[0].Body), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["query"] != "situations.watch" || body["searchMode"] != "situation" || body["name"] != "Deals" {
+		t.Fatalf("watch body routing fields = %#v", body)
+	}
+	delivery := body["delivery"].(map[string]any)
+	if delivery["type"] != "email" || delivery["config"].(map[string]any)["to"] != "desk@example.com" {
+		t.Fatalf("delivery = %#v, want normalized email delivery", delivery)
+	}
+	filters := body["filters"].(map[string]any)
+	if filters["types"].([]any)[0] != "merger" || filters["tickers"].([]any)[0] != "AAPL" {
+		t.Fatalf("filters = %#v, want normalized filters", filters)
+	}
+}
+
+func TestWatchSituationsRejectsDeliveryWithoutBearerOnlyAuth(t *testing.T) {
+	client, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+	client.APIKey = "test_api_key"
+	client.BearerToken = "human_bearer"
+
+	_, err := client.Situations.Watch(SituationWatchParams{
+		Filters:  map[string][]string{"types": {"merger"}},
+		Delivery: SituationWatchDelivery{Email: "desk@example.com"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "bearer-authenticated client without an API key") {
+		t.Fatalf("delivery mixed auth error = %v, want bearer-only validation", err)
+	}
+	if len(*captured) != 0 {
+		t.Fatalf("delivery validation should not send a request, sent %d", len(*captured))
+	}
+
+	client.APIKey = ""
+	client.BearerToken = ""
+	_, err = client.Situations.Watch(SituationWatchParams{
+		Filters:  map[string][]string{"types": {"merger"}},
+		Delivery: SituationWatchDelivery{Email: "desk@example.com"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "bearer-authenticated client without an API key") {
+		t.Fatalf("delivery missing bearer error = %v, want bearer-only validation", err)
+	}
+	if len(*captured) != 0 {
+		t.Fatalf("delivery validation should not send a request, sent %d", len(*captured))
+	}
+}
+
+func TestWatchSituationsSupportsFilterOnlyApiKeySafeCreate(t *testing.T) {
+	client, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+
+	_, err := client.Situations.Watch(SituationWatchParams{
+		Name:    "  Deals  ",
+		Filters: map[string][]string{"types": {"merger"}, "tickers": {" AAPL "}},
+	})
+	if err != nil {
+		t.Fatalf("WatchSituations filter-only failed: %v", err)
+	}
+
+	if (*captured)[0].Method != http.MethodPost || (*captured)[0].Path != "/v1/situations/watchlists" {
+		t.Fatalf("watch request = %s %s, want POST /v1/situations/watchlists", (*captured)[0].Method, (*captured)[0].Path)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte((*captured)[0].Body), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if _, ok := body["delivery"]; ok {
+		t.Fatalf("filter-only watch must omit delivery: %#v", body)
+	}
+}
+
+func TestSituationWatchlistsUseAliasSurface(t *testing.T) {
+	client, captured, closeServer := newCaptureClient(t)
+	defer closeServer()
+
+	if _, err := client.Situations.Watchlists(map[string]string{"limit": "10", "cursor": "20"}); err != nil {
+		t.Fatalf("Watchlists failed: %v", err)
+	}
+	if _, err := client.Situations.Watchlist("mon/with spaces"); err != nil {
+		t.Fatalf("Watchlist failed: %v", err)
+	}
+	if _, err := client.Situations.CreateWatchlist(SituationWatchlistParams{
+		Name:    "  Deals  ",
+		Filters: map[string][]string{"types": {"merger"}, "tickers": {" AAPL "}},
+		StartAt: "2026-07-13T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("CreateWatchlist failed: %v", err)
+	}
+	if err := client.Situations.DeleteWatchlist("mon/with spaces"); err != nil {
+		t.Fatalf("DeleteWatchlist failed: %v", err)
+	}
+
+	if (*captured)[0].Method != http.MethodGet || (*captured)[0].Path != "/v1/situations/watchlists" {
+		t.Fatalf("watchlists request = %s %s, want GET /v1/situations/watchlists", (*captured)[0].Method, (*captured)[0].Path)
+	}
+	query, err := url.ParseQuery((*captured)[0].Query)
+	if err != nil {
+		t.Fatalf("watchlists query parse failed: %v", err)
+	}
+	if query.Get("limit") != "10" || query.Get("cursor") != "20" {
+		t.Fatalf("watchlists query = %q, want limit/cursor", (*captured)[0].Query)
+	}
+	if (*captured)[1].Method != http.MethodGet || (*captured)[1].Path != "/v1/situations/watchlists/mon%2Fwith%20spaces" {
+		t.Fatalf("watchlist request = %s %s, want escaped watchlist GET", (*captured)[1].Method, (*captured)[1].Path)
+	}
+	if (*captured)[2].Method != http.MethodPost || (*captured)[2].Path != "/v1/situations/watchlists" {
+		t.Fatalf("create watchlist request = %s %s, want POST /v1/situations/watchlists", (*captured)[2].Method, (*captured)[2].Path)
+	}
+	if (*captured)[3].Method != http.MethodDelete || (*captured)[3].Path != "/v1/situations/watchlists/mon%2Fwith%20spaces" {
+		t.Fatalf("delete watchlist request = %s %s, want escaped watchlist DELETE", (*captured)[3].Method, (*captured)[3].Path)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte((*captured)[2].Body), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["query"] != "situations.watch" || body["searchMode"] != "situation" || body["name"] != "Deals" {
+		t.Fatalf("watchlist body routing fields = %#v", body)
+	}
+	if _, ok := body["webhookUrl"]; ok {
+		t.Fatalf("watchlist body must not include webhookUrl: %#v", body)
+	}
+	if _, ok := body["delivery"]; ok {
+		t.Fatalf("watchlist body must omit delivery for filter-only creates: %#v", body)
+	}
+	filters := body["filters"].(map[string]any)
+	if filters["types"].([]any)[0] != "merger" || filters["tickers"].([]any)[0] != "AAPL" {
+		t.Fatalf("filters = %#v, want normalized filters", filters)
+	}
+}
+
+func TestWatchSituationsValidatesFiltersAndDelivery(t *testing.T) {
+	client, _, closeServer := newCaptureClient(t)
+	defer closeServer()
+
+	if _, err := client.WatchSituations(SituationWatchParams{}); err == nil {
+		t.Fatal("expected missing filter error")
+	}
+	if _, err := client.WatchSituations(SituationWatchParams{
+		Filters:  map[string][]string{"types": {"not-a-type"}},
+		Delivery: SituationWatchDelivery{OrganizationWebhook: true},
+	}); err == nil {
+		t.Fatal("expected invalid canonical type error")
+	}
+	if _, err := client.WatchSituations(SituationWatchParams{
+		Filters:  map[string][]string{"subtypes": {"not-a-subtype"}},
+		Delivery: SituationWatchDelivery{OrganizationWebhook: true},
+	}); err == nil {
+		t.Fatal("expected invalid canonical subtype error")
+	}
+	if _, err := client.WatchSituations(SituationWatchParams{
+		Filters:  map[string][]string{"situationIds": {"not-a-situation-id"}},
+		Delivery: SituationWatchDelivery{OrganizationWebhook: true},
+	}); err == nil {
+		t.Fatal("expected invalid situation id error")
+	}
+}
+
 func TestContextWrappersRouteToCorePaths(t *testing.T) {
 	client, captured, closeServer := newCaptureClient(t)
 	defer closeServer()
@@ -828,10 +1365,6 @@ func TestContextWrappersRouteToCorePaths(t *testing.T) {
 		},
 		func() error {
 			_, err := client.FactorDashboardWithContext(ctx, map[string]string{"ticker": "AAPL"})
-			return err
-		},
-		func() error {
-			_, err := client.FactorValuationsWithContext(ctx, map[string]string{"keys": "VALUE"})
 			return err
 		},
 		func() error {
@@ -903,7 +1436,6 @@ func TestContextWrappersRouteToCorePaths(t *testing.T) {
 		"/v1/statements/all",
 		"/v1/factors/history/MKT%2FUS",
 		"/v1/factors/dashboard",
-		"/v1/factors/valuations",
 		"/v1/portfolio/analyze",
 		"/v1/portfolio/attribution",
 		"/v1/portfolio/hedge",
@@ -917,16 +1449,16 @@ func TestContextWrappersRouteToCorePaths(t *testing.T) {
 			t.Fatalf("path %d = %q, want %q", i, (*captured)[i].Path, want)
 		}
 	}
-	for _, i := range []int{16, 17, 18, 19, 20, 22} {
+	for _, i := range []int{15, 16, 17, 18, 19, 21} {
 		if (*captured)[i].Method != http.MethodPost {
 			t.Fatalf("method %d = %q, want POST", i, (*captured)[i].Method)
 		}
 	}
-	if !strings.Contains((*captured)[16].Query, "response_mode=compact") {
-		t.Fatalf("portfolio analyze query missing response mode: %q", (*captured)[16].Query)
+	if !strings.Contains((*captured)[15].Query, "response_mode=compact") {
+		t.Fatalf("portfolio analyze query missing response mode: %q", (*captured)[15].Query)
 	}
-	if !strings.Contains((*captured)[22].Body, `"id":"ctx-test"`) {
-		t.Fatalf("MCP tool body missing request id: %q", (*captured)[22].Body)
+	if !strings.Contains((*captured)[21].Body, `"id":"ctx-test"`) {
+		t.Fatalf("MCP tool body missing request id: %q", (*captured)[21].Body)
 	}
 }
 
@@ -958,46 +1490,6 @@ func TestNilContextFallsBackToBackground(t *testing.T) {
 	}
 }
 
-func TestMarketWrappersRouteToMarketPaths(t *testing.T) {
-	client, captured, closeServer := newCaptureClient(t)
-	defer closeServer()
-
-	calls := []func() error{
-		func() error {
-			_, err := client.MarketBars(map[string]string{"ticker": "AAPL", "limit": "5"})
-			return err
-		},
-		func() error {
-			_, err := client.MarketUniverse(map[string]string{"exchange": "NASDAQ", "limit": "10"})
-			return err
-		},
-		func() error { _, err := client.MarketReference(map[string]string{"ticker": "AAPL"}); return err },
-	}
-
-	for _, call := range calls {
-		if err := call(); err != nil {
-			t.Fatalf("wrapper call failed: %v", err)
-		}
-	}
-
-	wantPaths := []string{
-		"/v1/market/bars",
-		"/v1/market/universe",
-		"/v1/market/reference",
-	}
-	for i, want := range wantPaths {
-		if (*captured)[i].Path != want {
-			t.Fatalf("path %d = %q, want %q", i, (*captured)[i].Path, want)
-		}
-		if (*captured)[i].Method != http.MethodGet {
-			t.Fatalf("method %d = %q, want GET", i, (*captured)[i].Method)
-		}
-	}
-	if !strings.Contains((*captured)[1].Query, "exchange=NASDAQ") {
-		t.Fatalf("market universe query missing exchange: %q", (*captured)[1].Query)
-	}
-}
-
 func TestFactorParityWrappersRouteToLaunchPaths(t *testing.T) {
 	client, captured, closeServer := newCaptureClient(t)
 	defer closeServer()
@@ -1014,11 +1506,6 @@ func TestFactorParityWrappersRouteToLaunchPaths(t *testing.T) {
 		func() error { _, err := client.FactorExtremeMoves(map[string]string{"side": "both"}); return err },
 		func() error {
 			_, err := client.FactorExtremePairs(map[string]string{"sort": "abs_spread_return"})
-			return err
-		},
-		func() error { _, err := client.FactorValuations(map[string]string{"side": "tailwind"}); return err },
-		func() error {
-			_, err := client.FactorValuationStocks(map[string]string{"factor": "VALUE", "sort": "score"})
 			return err
 		},
 		func() error {
@@ -1068,8 +1555,6 @@ func TestFactorParityWrappersRouteToLaunchPaths(t *testing.T) {
 		"/v1/factors/sparklines",
 		"/v1/factors/extreme-moves",
 		"/v1/factors/extreme-pairs",
-		"/v1/factors/valuations",
-		"/v1/factors/valuations/stocks",
 		"/v1/factors/pairs",
 		"/v1/factors/pair-history/MOM%2FUS/VAL%2FUS",
 		"/v1/factors/bulk-download",
@@ -1086,22 +1571,22 @@ func TestFactorParityWrappersRouteToLaunchPaths(t *testing.T) {
 	if !strings.Contains((*captured)[0].Query, "response_mode=compact") {
 		t.Fatalf("factor history query missing response_mode: %q", (*captured)[0].Query)
 	}
-	if !strings.Contains((*captured)[9].Query, "response_mode=compact") {
-		t.Fatalf("factor custom query missing response_mode: %q", (*captured)[9].Query)
+	if !strings.Contains((*captured)[7].Query, "response_mode=compact") {
+		t.Fatalf("factor custom query missing response_mode: %q", (*captured)[7].Query)
 	}
-	if !strings.Contains((*captured)[12].Query, "response_mode=compact") {
-		t.Fatalf("portfolio hedge query missing response_mode: %q", (*captured)[12].Query)
+	if !strings.Contains((*captured)[10].Query, "response_mode=compact") {
+		t.Fatalf("portfolio hedge query missing response_mode: %q", (*captured)[10].Query)
 	}
-	for i := 9; i < len(*captured); i++ {
+	for i := 7; i < len(*captured); i++ {
 		if (*captured)[i].Method != http.MethodPost {
 			t.Fatalf("method %d = %q, want POST", i, (*captured)[i].Method)
 		}
 	}
-	if strings.Contains((*captured)[12].Body, "response_mode") {
-		t.Fatalf("portfolio hedge body should not contain response_mode: %q", (*captured)[12].Body)
+	if strings.Contains((*captured)[10].Body, "response_mode") {
+		t.Fatalf("portfolio hedge body should not contain response_mode: %q", (*captured)[10].Body)
 	}
-	if !strings.Contains((*captured)[12].Body, "constraints") {
-		t.Fatalf("portfolio hedge body missing constraints: %q", (*captured)[12].Body)
+	if !strings.Contains((*captured)[10].Body, "constraints") {
+		t.Fatalf("portfolio hedge body missing constraints: %q", (*captured)[10].Body)
 	}
 }
 

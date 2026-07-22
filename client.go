@@ -1,5 +1,3 @@
-// Package secapi provides a Go client for the SEC API. Use it to resolve
-// companies, retrieve filings and filing sections, and search SEC disclosures.
 package secapi
 
 import (
@@ -12,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -31,7 +30,7 @@ const DefaultHTTPTimeout = 30 * time.Second
 const DefaultRetryInitialBackoff = 200 * time.Millisecond
 const DefaultRetryMaxBackoff = 2 * time.Second
 const DefaultRetryMaxRetries = 2
-const SDKVersion = "1.0.1"
+const SDKVersion = "2.0.0"
 const sdkUserAgent = "secapi-go/" + SDKVersion
 
 // UnlimitedPaginationCap disables a MaxPages or MaxItems cap in explicit
@@ -417,6 +416,130 @@ func (p FactorHistoryParams) Params() map[string]string {
 	)
 }
 
+type SituationWatchDelivery struct {
+	Email               string
+	OrganizationWebhook bool
+}
+
+type SituationWatchParams struct {
+	Name     string
+	Filters  map[string][]string
+	StartAt  string
+	Delivery SituationWatchDelivery
+}
+
+type SituationWatchlistParams struct {
+	Name     string
+	Filters  map[string][]string
+	StartAt  string
+	Delivery SituationWatchDelivery
+}
+
+type SituationListParams struct {
+	Types         string
+	Subtypes      string
+	Statuses      string
+	Tickers       string
+	Forms         string
+	Sectors       string
+	MarketCap     string
+	Country       string
+	AnnouncedFrom string
+	AnnouncedTo   string
+	UpdatedFrom   string
+	Enrich        string
+	Cursor        string
+	Limit         string
+	ResponseMode  string
+	Extra         map[string]string
+}
+
+func (p SituationListParams) Params() map[string]string {
+	return requestParams(p.Extra,
+		param("types", p.Types),
+		param("subtypes", p.Subtypes),
+		param("statuses", p.Statuses),
+		param("tickers", p.Tickers),
+		param("forms", p.Forms),
+		param("sectors", p.Sectors),
+		param("market_cap", p.MarketCap),
+		param("country", p.Country),
+		param("announced_from", p.AnnouncedFrom),
+		param("announced_to", p.AnnouncedTo),
+		param("updated_from", p.UpdatedFrom),
+		param("enrich", p.Enrich),
+		param("cursor", p.Cursor),
+		param("limit", p.Limit),
+		param("response_mode", p.ResponseMode),
+	)
+}
+
+type SituationFeedParams struct {
+	Types      string
+	Categories string
+	Tickers    string
+	Country    string
+	Since      string
+	Cursor     string
+	Limit      string
+	Extra      map[string]string
+}
+
+func (p SituationFeedParams) Params() map[string]string {
+	return requestParams(p.Extra,
+		param("types", p.Types),
+		param("categories", p.Categories),
+		param("tickers", p.Tickers),
+		param("country", p.Country),
+		param("since", p.Since),
+		param("cursor", p.Cursor),
+		param("limit", p.Limit),
+	)
+}
+
+type SituationFeedRSSParams struct {
+	Types      string
+	Categories string
+	Tickers    string
+	Country    string
+	Since      string
+	Extra      map[string]string
+}
+
+func (p SituationFeedRSSParams) Params() map[string]string {
+	return requestParams(p.Extra,
+		param("types", p.Types),
+		param("categories", p.Categories),
+		param("tickers", p.Tickers),
+		param("country", p.Country),
+		param("since", p.Since),
+	)
+}
+
+type SituationIssueListParams struct {
+	Limit string
+	Extra map[string]string
+}
+
+func (p SituationIssueListParams) Params() map[string]string {
+	return requestParams(p.Extra, param("limit", p.Limit))
+}
+
+type SituationMemberParams struct {
+	Enrich string
+	Limit  string
+	Cursor string
+	Extra  map[string]string
+}
+
+func (p SituationMemberParams) Params() map[string]string {
+	return requestParams(p.Extra,
+		param("enrich", p.Enrich),
+		param("limit", p.Limit),
+		param("cursor", p.Cursor),
+	)
+}
+
 type Client struct {
 	APIKey      string
 	BearerToken string
@@ -429,6 +552,7 @@ type Client struct {
 	Sections    *SectionService
 	Search      *SearchService
 	Factors     *FactorService
+	Situations  *SituationService
 }
 
 // APIError is returned for non-2xx SEC API responses.
@@ -457,17 +581,13 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("sec api error: status=%d message=%s", e.StatusCode, message)
 }
 
-// NewClient creates an API-key client. If apiKey is empty, it uses
-// SECAPI_API_KEY (or the legacy OMNI_DATASTREAM_API_KEY) from the environment.
 func NewClient(apiKey string) *Client {
 	if strings.TrimSpace(apiKey) == "" {
 		apiKey = firstEnv("SECAPI_API_KEY", "OMNI_DATASTREAM_API_KEY")
 	}
-	return newClient(apiKey, "")
+	return newClient(apiKey, firstEnv("SECAPI_BEARER_TOKEN", "OMNI_DATASTREAM_BEARER_TOKEN"))
 }
 
-// NewBearerTokenClient creates a bearer-token client. If bearerToken is empty,
-// it uses SECAPI_BEARER_TOKEN (or the legacy OMNI_DATASTREAM_BEARER_TOKEN).
 func NewBearerTokenClient(bearerToken string) *Client {
 	if strings.TrimSpace(bearerToken) == "" {
 		bearerToken = firstEnv("SECAPI_BEARER_TOKEN", "OMNI_DATASTREAM_BEARER_TOKEN")
@@ -489,6 +609,7 @@ func newClient(apiKey string, bearerToken string) *Client {
 	client.Sections = &SectionService{client: client}
 	client.Search = &SearchService{client: client}
 	client.Factors = &FactorService{client: client}
+	client.Situations = &SituationService{client: client}
 	return client
 }
 
@@ -692,28 +813,12 @@ func (s *FactorService) Correlations(params map[string]string) (map[string]any, 
 	return s.client.FactorCorrelations(params)
 }
 
-func (s *FactorService) Screen(params map[string]string) (map[string]any, error) {
-	return s.client.FactorScreen(params)
-}
-
 func (s *FactorService) ExtremeMoves(params map[string]string) (map[string]any, error) {
 	return s.client.FactorExtremeMoves(params)
 }
 
 func (s *FactorService) ExtremePairs(params map[string]string) (map[string]any, error) {
 	return s.client.FactorExtremePairs(params)
-}
-
-func (s *FactorService) Valuations(params map[string]string) (map[string]any, error) {
-	return s.client.FactorValuations(params)
-}
-
-func (s *FactorService) ValuationsWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
-	return s.client.FactorValuationsWithContext(ctx, params)
-}
-
-func (s *FactorService) ValuationStocks(params map[string]string) (map[string]any, error) {
-	return s.client.FactorValuationStocks(params)
 }
 
 func (s *FactorService) Exposures(params map[string]string) (map[string]any, error) {
@@ -746,6 +851,122 @@ func (s *FactorService) BulkDownload(params map[string]string) (map[string]any, 
 
 func (s *FactorService) Custom(body any, params ...map[string]string) (map[string]any, error) {
 	return s.client.FactorCustom(body, params...)
+}
+
+type SituationService struct {
+	client *Client
+}
+
+func (s *SituationService) List(params map[string]string) (map[string]any, error) {
+	return s.client.ListSituations(params)
+}
+
+func (s *SituationService) ListWithParams(params SituationListParams) (map[string]any, error) {
+	return s.client.ListSituations(params.Params())
+}
+
+func (s *SituationService) ListWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return s.client.ListSituationsWithContext(ctx, params)
+}
+
+func (s *SituationService) Get(situationID string, params map[string]string) (map[string]any, error) {
+	return s.client.GetSituation(situationID, params)
+}
+
+func (s *SituationService) GetWithParams(situationID string, params SituationMemberParams) (map[string]any, error) {
+	return s.client.GetSituation(situationID, params.Params())
+}
+
+func (s *SituationService) GetWithContext(ctx context.Context, situationID string, params map[string]string) (map[string]any, error) {
+	return s.client.GetSituationWithContext(ctx, situationID, params)
+}
+
+func (s *SituationService) ByForm(form string, params map[string]string) (map[string]any, error) {
+	return s.client.SituationsByForm(form, params)
+}
+
+func (s *SituationService) ByFormWithParams(form string, params SituationListParams) (map[string]any, error) {
+	return s.client.SituationsByForm(form, params.Params())
+}
+
+func (s *SituationService) Feed(params map[string]string) (map[string]any, error) {
+	return s.client.SituationsFeed(params)
+}
+
+func (s *SituationService) FeedWithParams(params SituationFeedParams) (map[string]any, error) {
+	return s.client.SituationsFeed(params.Params())
+}
+
+func (s *SituationService) FeedRSS(params map[string]string) (string, error) {
+	return s.client.SituationsFeedRSS(params)
+}
+
+func (s *SituationService) FeedRSSWithParams(params SituationFeedRSSParams) (string, error) {
+	return s.client.SituationsFeedRSS(params.Params())
+}
+
+func (s *SituationService) Issues(params map[string]string) (map[string]any, error) {
+	return s.client.SituationsIssues(params)
+}
+
+func (s *SituationService) IssuesWithParams(params SituationIssueListParams) (map[string]any, error) {
+	return s.client.SituationsIssues(params.Params())
+}
+
+func (s *SituationService) Issue(issue string, params map[string]string) (map[string]any, error) {
+	return s.client.SituationIssue(issue, params)
+}
+
+func (s *SituationService) Calendar(params map[string]string) (map[string]any, error) {
+	return s.client.SituationsCalendar(params)
+}
+
+func (s *SituationService) Stats(params map[string]string) (map[string]any, error) {
+	return s.client.SituationsStats(params)
+}
+
+func (s *SituationService) Performance(params map[string]string) (map[string]any, error) {
+	return s.client.SituationsPerformance(params)
+}
+
+func (s *SituationService) Filings(situationID string, params map[string]string) (map[string]any, error) {
+	return s.client.SituationFilings(situationID, params)
+}
+
+func (s *SituationService) FilingsWithParams(situationID string, params SituationMemberParams) (map[string]any, error) {
+	return s.client.SituationFilings(situationID, params.Params())
+}
+
+func (s *SituationService) Summary(situationID string, params map[string]string) (map[string]any, error) {
+	return s.client.SituationSummary(situationID, params)
+}
+
+func (s *SituationService) Export(situationID string, params map[string]string) (string, error) {
+	return s.client.ExportSituation(situationID, params)
+}
+
+func (s *SituationService) Underwrite(situationID string, params map[string]string) (map[string]any, error) {
+	return s.client.UnderwriteSituation(situationID, params)
+}
+
+func (s *SituationService) Watch(params SituationWatchParams) (map[string]any, error) {
+	return s.client.WatchSituations(params)
+}
+
+func (s *SituationService) Watchlists(params map[string]string) (map[string]any, error) {
+	return s.client.ListSituationWatchlists(params)
+}
+
+func (s *SituationService) Watchlist(monitorID string) (map[string]any, error) {
+	return s.client.GetSituationWatchlist(monitorID)
+}
+
+func (s *SituationService) CreateWatchlist(params SituationWatchlistParams) (map[string]any, error) {
+	return s.client.CreateSituationWatchlist(params)
+}
+
+func (s *SituationService) DeleteWatchlist(monitorID string) error {
+	return s.client.DeleteSituationWatchlist(monitorID)
 }
 
 func firstEnv(names ...string) string {
@@ -829,6 +1050,144 @@ func requestParams(extra map[string]string, pairs ...[2]string) map[string]strin
 		return nil
 	}
 	return params
+}
+
+var situationIDPattern = regexp.MustCompile(`^sit_[a-f0-9]{20}$`)
+
+var situationFilterKeys = map[string]struct{}{
+	"situationIds": {},
+	"types":        {},
+	"subtypes":     {},
+	"statuses":     {},
+	"tickers":      {},
+	"sectors":      {},
+}
+
+var situationTypes = map[string]struct{}{
+	"merger": {}, "tender_offer": {}, "going_private": {}, "spin_off": {}, "divestiture": {},
+	"activist_campaign": {}, "restructuring": {}, "bankruptcy": {}, "liquidation": {},
+	"strategic_review": {}, "capital_return": {}, "capital_raise": {}, "spac": {}, "delisting": {},
+	"relisting": {}, "litigation": {}, "management_change": {}, "domicile_change": {},
+	"demutualization": {}, "other": {},
+}
+
+var situationSubtypes = map[string]struct{}{
+	"definitive": {}, "preliminary": {}, "unsolicited": {}, "rumor_response": {}, "scheme_of_arrangement": {}, "spac_merger": {},
+	"self_tender": {}, "third_party": {}, "exchange_offer": {}, "management_buyout": {}, "sponsor_buyout": {}, "squeeze_out": {},
+	"spin_off": {}, "split_off": {}, "carve_out_ipo": {}, "asset_sale": {}, "joint_venture": {}, "carve_out": {}, "stake_disclosure": {},
+	"proxy_contest": {}, "cooperation_agreement": {}, "settlement": {}, "debt_for_equity_swap": {}, "out_of_court": {}, "operational": {},
+	"chapter_11": {}, "chapter_7": {}, "chapter_15": {}, "administration": {}, "prepackaged": {}, "emergence": {}, "plan_of_liquidation": {},
+	"dissolution": {}, "formal_alternatives": {}, "sale_process": {}, "buyback_authorization": {}, "special_dividend": {}, "recapitalization": {},
+	"rights_offering": {}, "public_offering": {}, "private_placement": {}, "pipe": {}, "atm_program": {}, "ipo": {}, "extension": {},
+	"trust_liquidation": {}, "forced": {}, "voluntary": {}, "uplisting": {}, "otc_relisting": {}, "won": {}, "lost": {}, "settled": {},
+	"ceo": {}, "cfo": {}, "chair": {}, "board": {}, "redomiciliation": {},
+}
+
+var situationStatuses = map[string]struct{}{
+	"rumored": {}, "announced": {}, "pending": {}, "completed": {}, "terminated": {}, "expired": {},
+}
+
+func situationQueryParams(params map[string]string) map[string]string {
+	if len(params) == 0 {
+		return nil
+	}
+	next := make(map[string]string, len(params))
+	for key, value := range params {
+		next[key] = strings.Join(splitSituationParam(value), ",")
+	}
+	return next
+}
+
+func splitSituationParam(value string) []string {
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	if len(values) == 0 {
+		return []string{strings.TrimSpace(value)}
+	}
+	return values
+}
+
+func validateSituationWatchFilters(filters map[string][]string) (map[string][]string, error) {
+	if len(filters) == 0 {
+		return nil, errors.New("situations.watch requires at least one non-empty list filter")
+	}
+	normalized := make(map[string][]string, len(filters))
+	for key, rawValues := range filters {
+		if _, ok := situationFilterKeys[key]; !ok {
+			return nil, fmt.Errorf("situations.watch has unsupported filter key: %s", key)
+		}
+		if len(rawValues) == 0 {
+			return nil, fmt.Errorf("situations.watch filter %s must be a non-empty list", key)
+		}
+		values := make([]string, 0, len(rawValues))
+		for _, rawValue := range rawValues {
+			value := strings.TrimSpace(rawValue)
+			if value == "" {
+				return nil, fmt.Errorf("situations.watch filter %s cannot contain blank values", key)
+			}
+			values = append(values, value)
+		}
+		normalized[key] = values
+	}
+	if values := normalized["types"]; len(values) > 0 {
+		if len(values) > 50 {
+			return nil, errors.New("situations.watch types must be canonical situation types (maximum 50)")
+		}
+		for _, value := range values {
+			if _, ok := situationTypes[value]; !ok {
+				return nil, errors.New("situations.watch types must be canonical situation types (maximum 50)")
+			}
+		}
+	}
+	if values := normalized["subtypes"]; len(values) > 0 {
+		if len(values) > 100 {
+			return nil, errors.New("situations.watch subtypes must be canonical situation subtypes (maximum 100)")
+		}
+		for _, value := range values {
+			if _, ok := situationSubtypes[value]; !ok {
+				return nil, errors.New("situations.watch subtypes must be canonical situation subtypes (maximum 100)")
+			}
+		}
+	}
+	if values := normalized["statuses"]; len(values) > 0 {
+		if len(values) > 10 {
+			return nil, errors.New("situations.watch statuses must be canonical lifecycle statuses (maximum 10)")
+		}
+		for _, value := range values {
+			if _, ok := situationStatuses[value]; !ok {
+				return nil, errors.New("situations.watch statuses must be canonical lifecycle statuses (maximum 10)")
+			}
+		}
+	}
+	if values := normalized["situationIds"]; len(values) > 0 {
+		if len(values) > 50 {
+			return nil, errors.New("situations.watch situationIds must be canonical ids (maximum 50)")
+		}
+		for _, value := range values {
+			if !situationIDPattern.MatchString(value) {
+				return nil, errors.New("situations.watch situationIds must be canonical ids (maximum 50)")
+			}
+		}
+	}
+	if len(normalized["tickers"]) > 200 || len(normalized["sectors"]) > 200 {
+		return nil, errors.New("situations.watch tickers and sectors allow at most 200 values")
+	}
+	return normalized, nil
+}
+
+func normalizeSituationWatchDelivery(delivery SituationWatchDelivery) (map[string]any, error) {
+	if email := strings.TrimSpace(delivery.Email); email != "" {
+		return map[string]any{"type": "email", "config": map[string]any{"to": email}}, nil
+	}
+	if delivery.OrganizationWebhook {
+		return map[string]any{"type": "webhook", "config": map[string]any{"organizationEventFanout": true}}, nil
+	}
+	return nil, errors.New("situations.watch requires an email or organization webhook delivery destination")
 }
 
 func stringField(body map[string]any, keys ...string) string {
@@ -1030,7 +1389,7 @@ func retryAfterDelay(value string) (time.Duration, bool) {
 	return 0, false
 }
 
-func retryDelay(attempt int, cfg RetryConfig, res *http.Response) time.Duration {
+func retryDelay(attempt int, cfg RetryConfig, res *http.Response, body map[string]any) time.Duration {
 	if res != nil {
 		if delay, ok := retryAfterDelay(res.Header.Get("Retry-After")); ok {
 			if cfg.MaxBackoff > 0 && delay > cfg.MaxBackoff {
@@ -1038,6 +1397,12 @@ func retryDelay(attempt int, cfg RetryConfig, res *http.Response) time.Duration 
 			}
 			return delay
 		}
+	}
+	if delay, ok := structuredRetryDelay(body); ok {
+		if cfg.MaxBackoff > 0 && delay > cfg.MaxBackoff {
+			return cfg.MaxBackoff
+		}
+		return delay
 	}
 	delay := cfg.InitialBackoff
 	for i := 0; i < attempt; i++ {
@@ -1050,6 +1415,75 @@ func retryDelay(attempt int, cfg RetryConfig, res *http.Response) time.Duration 
 		return cfg.MaxBackoff
 	}
 	return delay
+}
+
+func structuredRetryDelay(body map[string]any) (time.Duration, bool) {
+	for _, candidate := range retryDelayCandidateMaps(body) {
+		if delay, ok := durationFromRetryField(candidate, "retryAfterMs", time.Millisecond); ok {
+			return delay, true
+		}
+		if delay, ok := durationFromRetryField(candidate, "retry_after_ms", time.Millisecond); ok {
+			return delay, true
+		}
+		if delay, ok := durationFromRetryField(candidate, "retryAfterSeconds", time.Second); ok {
+			return delay, true
+		}
+		if delay, ok := durationFromRetryField(candidate, "retry_after_seconds", time.Second); ok {
+			return delay, true
+		}
+	}
+	return 0, false
+}
+
+func retryDelayCandidateMaps(body map[string]any) []map[string]any {
+	if body == nil {
+		return nil
+	}
+	candidates := []map[string]any{body}
+	if details, ok := body["details"].(map[string]any); ok {
+		candidates = append(candidates, details)
+	}
+	if errorObject, ok := body["error"].(map[string]any); ok {
+		candidates = append(candidates, errorObject)
+		if data, ok := errorObject["data"].(map[string]any); ok {
+			candidates = append(candidates, data)
+		}
+	}
+	return candidates
+}
+
+func durationFromRetryField(body map[string]any, key string, unit time.Duration) (time.Duration, bool) {
+	value, ok := body[key]
+	if !ok {
+		return 0, false
+	}
+	var numeric float64
+	switch typed := value.(type) {
+	case float64:
+		numeric = typed
+	case int:
+		numeric = float64(typed)
+	case int64:
+		numeric = float64(typed)
+	case json.Number:
+		parsed, err := typed.Float64()
+		if err != nil {
+			return 0, false
+		}
+		numeric = parsed
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		if err != nil {
+			return 0, false
+		}
+		numeric = parsed
+	default:
+		return 0, false
+	}
+	if numeric < 0 {
+		return 0, false
+	}
+	return time.Duration(numeric * float64(unit)), true
 }
 
 func sleepContext(ctx context.Context, delay time.Duration) error {
@@ -1068,6 +1502,100 @@ func sleepContext(ctx context.Context, delay time.Duration) error {
 
 func (c *Client) request(method string, pathname string, params map[string]string, body any) (map[string]any, error) {
 	return c.requestWithContext(context.Background(), method, pathname, params, body)
+}
+
+func (c *Client) requestText(method string, pathname string, params map[string]string, body any) (string, error) {
+	return c.requestTextWithContext(context.Background(), method, pathname, params, body)
+}
+
+func (c *Client) requestTextWithContext(ctx context.Context, method string, pathname string, params map[string]string, body any) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	baseURL := strings.TrimRight(c.BaseURL, "/")
+	if baseURL == "" {
+		baseURL = "https://api.secapi.ai"
+	}
+	u, err := url.Parse(baseURL + pathname)
+	if err != nil {
+		return "", err
+	}
+	query := u.Query()
+	for key, value := range params {
+		if value == "" {
+			continue
+		}
+		query.Set(key, value)
+	}
+	u.RawQuery = query.Encode()
+
+	var payload []byte
+	if body != nil {
+		payload, err = json.Marshal(body)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	cfg := c.retryConfig()
+	for attempt := 0; ; attempt++ {
+		var reader io.Reader
+		if payload != nil {
+			reader = bytes.NewReader(payload)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, u.String(), reader)
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("content-type", "application/json")
+		req.Header.Set("accept", "text/markdown, text/plain, application/json")
+		req.Header.Set("secapi-version", c.APIVersion)
+		req.Header.Set("user-agent", sdkUserAgent)
+		if c.BearerToken != "" {
+			req.Header.Set("authorization", "Bearer "+c.BearerToken)
+		}
+		if c.APIKey != "" {
+			req.Header.Set("x-api-key", c.APIKey)
+		}
+
+		res, err := c.httpClient().Do(req)
+		if err != nil {
+			if isRetryableMethod(method) && ctx.Err() == nil && attempt < cfg.MaxRetries {
+				if sleepErr := sleepContext(ctx, retryDelay(attempt, cfg, nil, nil)); sleepErr != nil {
+					return "", sleepErr
+				}
+				continue
+			}
+			return "", err
+		}
+
+		responsePayload, err := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		if err != nil {
+			return "", err
+		}
+		var decoded map[string]any
+		if len(responsePayload) > 0 {
+			_ = json.Unmarshal(responsePayload, &decoded)
+		}
+		if shouldRetryResponse(method, res.StatusCode) && attempt < cfg.MaxRetries {
+			if err := sleepContext(ctx, retryDelay(attempt, cfg, res, decoded)); err != nil {
+				return "", err
+			}
+			continue
+		}
+		if !isSuccessStatus(res.StatusCode) {
+			if decoded != nil {
+				return "", apiError(res, decoded)
+			}
+			return "", &APIError{
+				StatusCode: res.StatusCode,
+				RequestID:  responseRequestID(res, nil),
+				Message:    strings.TrimSpace(string(responsePayload)),
+			}
+		}
+		return string(responsePayload), nil
+	}
 }
 
 func (c *Client) requestWithContext(ctx context.Context, method string, pathname string, params map[string]string, body any) (map[string]any, error) {
@@ -1124,7 +1652,7 @@ func (c *Client) requestWithContext(ctx context.Context, method string, pathname
 		res, err := c.httpClient().Do(req)
 		if err != nil {
 			if isRetryableMethod(method) && ctx.Err() == nil && attempt < cfg.MaxRetries {
-				if sleepErr := sleepContext(ctx, retryDelay(attempt, cfg, nil)); sleepErr != nil {
+				if sleepErr := sleepContext(ctx, retryDelay(attempt, cfg, nil, nil)); sleepErr != nil {
 					return nil, sleepErr
 				}
 				continue
@@ -1132,32 +1660,34 @@ func (c *Client) requestWithContext(ctx context.Context, method string, pathname
 			return nil, err
 		}
 
+		responsePayload, err := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		var decoded map[string]any
+		var decodeErr error
+		if len(responsePayload) > 0 {
+			decodeErr = json.Unmarshal(responsePayload, &decoded)
+		}
 		if shouldRetryResponse(method, res.StatusCode) && attempt < cfg.MaxRetries {
-			_, _ = io.Copy(io.Discard, res.Body)
-			_ = res.Body.Close()
-			if err := sleepContext(ctx, retryDelay(attempt, cfg, res)); err != nil {
+			if err := sleepContext(ctx, retryDelay(attempt, cfg, res, decoded)); err != nil {
 				return nil, err
 			}
 			continue
 		}
-		defer res.Body.Close()
 
 		if res.StatusCode == http.StatusNoContent {
 			return nil, nil
 		}
 
-		responsePayload, err := io.ReadAll(res.Body)
-		if err != nil {
-			return nil, err
-		}
 		if len(responsePayload) == 0 && isSuccessStatus(res.StatusCode) {
 			return nil, nil
 		}
 		if len(responsePayload) == 0 {
 			return nil, apiError(res, nil)
 		}
-		var decoded map[string]any
-		if err := json.Unmarshal(responsePayload, &decoded); err != nil {
+		if decodeErr != nil {
 			if !isSuccessStatus(res.StatusCode) {
 				return nil, &APIError{
 					StatusCode: res.StatusCode,
@@ -1165,7 +1695,7 @@ func (c *Client) requestWithContext(ctx context.Context, method string, pathname
 					Message:    strings.TrimSpace(string(responsePayload)),
 				}
 			}
-			return nil, err
+			return nil, decodeErr
 		}
 		if !isSuccessStatus(res.StatusCode) {
 			return nil, apiError(res, decoded)
@@ -1382,12 +1912,13 @@ func (c *Client) Offerings(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/offerings", params, nil)
 }
 
+// Public market data plane. These five routes are contract-gated public surface
+// in services/datastream-api/src/lib/api-surface-registry.ts and are present in
+// the published public OpenAPI. Market routes registered with internal-token or
+// operator access deliberately have NO client method here — see
+// docs/operations/sdk-mirror-publish-triage.md.
 func (c *Client) MarketCalendar(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/market/calendar", params, nil)
-}
-
-func (c *Client) MarketEstimates(params map[string]string) (map[string]any, error) {
-	return c.request(http.MethodGet, "/v1/market/estimates", params, nil)
 }
 
 func (c *Client) MarketSnapshots(params map[string]string) (map[string]any, error) {
@@ -1402,16 +1933,206 @@ func (c *Client) MarketCorporateActions(params map[string]string) (map[string]an
 	return c.request(http.MethodGet, "/v1/market/corporate-actions", params, nil)
 }
 
-func (c *Client) MarketUniverse(params map[string]string) (map[string]any, error) {
-	return c.request(http.MethodGet, "/v1/market/universe", params, nil)
-}
-
 func (c *Client) MarketReference(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/market/reference", params, nil)
 }
 
 func (c *Client) NewsStories(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/news/stories", params, nil)
+}
+
+func (c *Client) ListSituations(params map[string]string) (map[string]any, error) {
+	return c.ListSituationsWithContext(context.Background(), params)
+}
+
+func (c *Client) ListSituationsWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations", situationQueryParams(params), nil)
+}
+
+func (c *Client) GetSituation(situationID string, params map[string]string) (map[string]any, error) {
+	return c.GetSituationWithContext(context.Background(), situationID, params)
+}
+
+func (c *Client) GetSituationWithContext(ctx context.Context, situationID string, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/situations/"+url.PathEscape(situationID), params, nil)
+}
+
+func (c *Client) SituationsByForm(form string, params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/by-form/"+url.PathEscape(form), situationQueryParams(params), nil)
+}
+
+func (c *Client) SituationsFeed(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/feed", situationQueryParams(params), nil)
+}
+
+func (c *Client) SituationsFeedRSS(params map[string]string) (string, error) {
+	return c.requestText(http.MethodGet, "/v1/situations/feed.rss", situationQueryParams(params), nil)
+}
+
+func (c *Client) SituationsIssues(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/issues", params, nil)
+}
+
+func (c *Client) SituationIssue(issue string, params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/issues/"+url.PathEscape(issue), params, nil)
+}
+
+func (c *Client) SituationsCalendar(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/calendar", situationQueryParams(params), nil)
+}
+
+func (c *Client) SituationsStats(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/stats", params, nil)
+}
+
+func (c *Client) SituationsPerformance(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/performance", situationQueryParams(params), nil)
+}
+
+func (c *Client) SituationFilings(situationID string, params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/"+url.PathEscape(situationID)+"/filings", params, nil)
+}
+
+func (c *Client) SituationSummary(situationID string, params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/"+url.PathEscape(situationID)+"/summary", params, nil)
+}
+
+func (c *Client) ExportSituation(situationID string, params map[string]string) (string, error) {
+	return c.requestText(http.MethodGet, "/v1/situations/"+url.PathEscape(situationID)+"/export", params, nil)
+}
+
+func (c *Client) UnderwriteSituation(situationID string, params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/"+url.PathEscape(situationID)+"/underwriting-pack", params, nil)
+}
+
+func (c *Client) WatchSituations(params SituationWatchParams) (map[string]any, error) {
+	filters, err := validateSituationWatchFilters(params.Filters)
+	if err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(params.Name)
+	if name == "" {
+		name = "Special Situations watch"
+	}
+	body := map[string]any{
+		"name":       name,
+		"query":      "situations.watch",
+		"searchMode": "situation",
+		"filters":    filters,
+	}
+	if strings.TrimSpace(params.Delivery.Email) != "" || params.Delivery.OrganizationWebhook {
+		if err := c.requireBearerOnlySituationDelivery(); err != nil {
+			return nil, err
+		}
+		delivery, err := normalizeSituationWatchDelivery(params.Delivery)
+		if err != nil {
+			return nil, err
+		}
+		body["delivery"] = delivery
+	}
+	if startAt := strings.TrimSpace(params.StartAt); startAt != "" {
+		body["startAt"] = startAt
+	}
+	return c.request(http.MethodPost, "/v1/situations/watchlists", nil, body)
+}
+
+func (c *Client) ListSituationWatchlists(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/watchlists", params, nil)
+}
+
+func (c *Client) GetSituationWatchlist(monitorID string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/situations/watchlists/"+url.PathEscape(monitorID), nil, nil)
+}
+
+func (c *Client) CreateSituationWatchlist(params SituationWatchlistParams) (map[string]any, error) {
+	filters, err := validateSituationWatchFilters(params.Filters)
+	if err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(params.Name)
+	if name == "" {
+		name = "Special Situations watch"
+	}
+	body := map[string]any{
+		"name":       name,
+		"query":      "situations.watch",
+		"searchMode": "situation",
+		"filters":    filters,
+	}
+	if strings.TrimSpace(params.Delivery.Email) != "" || params.Delivery.OrganizationWebhook {
+		if err := c.requireBearerOnlySituationDelivery(); err != nil {
+			return nil, err
+		}
+		delivery, err := normalizeSituationWatchDelivery(params.Delivery)
+		if err != nil {
+			return nil, err
+		}
+		body["delivery"] = delivery
+	}
+	if startAt := strings.TrimSpace(params.StartAt); startAt != "" {
+		body["startAt"] = startAt
+	}
+	return c.request(http.MethodPost, "/v1/situations/watchlists", nil, body)
+}
+
+func (c *Client) DeleteSituationWatchlist(monitorID string) error {
+	_, err := c.request(http.MethodDelete, "/v1/situations/watchlists/"+url.PathEscape(monitorID), nil, nil)
+	return err
+}
+
+func (c *Client) requireBearerOnlySituationDelivery() error {
+	if strings.TrimSpace(c.BearerToken) == "" || strings.TrimSpace(c.APIKey) != "" {
+		return errors.New("situations.watch delivery activation requires a bearer-authenticated client without an API key")
+	}
+	return nil
+}
+
+func (c *Client) EmbedSituations(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/embed/situations", params, nil)
+}
+
+func (c *Client) EmbedSituationsWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/embed/situations", params, nil)
+}
+
+func (c *Client) EmbedSituationsFeed(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/embed/situations/feed", params, nil)
+}
+
+func (c *Client) EmbedSituationsFeedRSS(params map[string]string) (string, error) {
+	return c.requestText(http.MethodGet, "/v1/embed/situations/feed.rss", params, nil)
+}
+
+func (c *Client) EmbedSituationsStats(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/embed/situations/stats", params, nil)
+}
+
+func (c *Client) EmbedSituation(situationID string, params map[string]string) (map[string]any, error) {
+	return c.EmbedSituationWithContext(context.Background(), situationID, params)
+}
+
+func (c *Client) EmbedSituationWithContext(ctx context.Context, situationID string, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/embed/situations/"+url.PathEscape(situationID), params, nil)
+}
+
+func (c *Client) EmbedSituationExport(situationID string, params map[string]string) (string, error) {
+	return c.requestText(http.MethodGet, "/v1/embed/situations/"+url.PathEscape(situationID)+"/export", params, nil)
+}
+
+func (c *Client) EmbedSituationIssues(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/embed/situations/issues", params, nil)
+}
+
+func (c *Client) EmbedSituationIssuesWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/embed/situations/issues", params, nil)
+}
+
+func (c *Client) EmbedSituationIssue(issue string) (map[string]any, error) {
+	return c.EmbedSituationIssueWithContext(context.Background(), issue)
+}
+
+func (c *Client) EmbedSituationIssueWithContext(ctx context.Context, issue string) (map[string]any, error) {
+	return c.requestWithContext(ctx, http.MethodGet, "/v1/embed/situations/issues/"+url.PathEscape(issue), nil, nil)
 }
 
 func (c *Client) MacroSearch(params map[string]string) (map[string]any, error) {
@@ -1518,28 +2239,12 @@ func (c *Client) FactorCorrelations(params map[string]string) (map[string]any, e
 	return c.request(http.MethodGet, "/v1/factors/correlations", params, nil)
 }
 
-func (c *Client) FactorScreen(params map[string]string) (map[string]any, error) {
-	return c.request(http.MethodGet, "/v1/factors/screen", params, nil)
-}
-
 func (c *Client) FactorExtremeMoves(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/factors/extreme-moves", params, nil)
 }
 
 func (c *Client) FactorExtremePairs(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/factors/extreme-pairs", params, nil)
-}
-
-func (c *Client) FactorValuations(params map[string]string) (map[string]any, error) {
-	return c.FactorValuationsWithContext(context.Background(), params)
-}
-
-func (c *Client) FactorValuationsWithContext(ctx context.Context, params map[string]string) (map[string]any, error) {
-	return c.requestWithContext(ctx, http.MethodGet, "/v1/factors/valuations", params, nil)
-}
-
-func (c *Client) FactorValuationStocks(params map[string]string) (map[string]any, error) {
-	return c.request(http.MethodGet, "/v1/factors/valuations/stocks", params, nil)
 }
 
 func (c *Client) FactorExposures(params map[string]string) (map[string]any, error) {
@@ -1634,6 +2339,10 @@ func (c *Client) IntelligenceCompany(params map[string]string) (map[string]any, 
 	return c.request(http.MethodGet, "/v1/intelligence/company", params, nil)
 }
 
+func (c *Client) IntelligenceEarningsPreview(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/intelligence/earnings-preview", params, nil)
+}
+
 func (c *Client) IntelligenceCountryReport(body any) (map[string]any, error) {
 	return c.request(http.MethodPost, "/v1/intelligence/country-report", nil, body)
 }
@@ -1644,10 +2353,6 @@ func (c *Client) IntelligencePortfolio(body any) (map[string]any, error) {
 
 func (c *Client) IntelligenceQuery(body any) (map[string]any, error) {
 	return c.request(http.MethodPost, "/v1/intelligence/query", nil, body)
-}
-
-func (c *Client) IntelligenceEarningsPreview(params map[string]string) (map[string]any, error) {
-	return c.request(http.MethodGet, "/v1/intelligence/earnings-preview", params, nil)
 }
 
 func (c *Client) IntelligenceWatchlist(body any) (map[string]any, error) {
@@ -1711,11 +2416,7 @@ func (c *Client) GetTrace(traceID string) (map[string]any, error) {
 }
 
 func (c *Client) RequestDiagnostics(requestID string) (map[string]any, error) {
-	return c.RequestDiagnosticsWithContext(context.Background(), requestID)
-}
-
-func (c *Client) RequestDiagnosticsWithContext(ctx context.Context, requestID string) (map[string]any, error) {
-	return c.requestWithContext(ctx, http.MethodGet, "/v1/diagnostics/requests/"+url.PathEscape(requestID), nil, nil)
+	return c.request(http.MethodGet, "/v1/diagnostics/requests/"+url.PathEscape(requestID), nil, nil)
 }
 
 func (c *Client) SegmentedRevenues(params map[string]string) (map[string]any, error) {
@@ -1829,10 +2530,10 @@ func (c *Client) CompanySubsidiaries(params map[string]string) (map[string]any, 
 	return c.request(http.MethodGet, "/v1/companies/subsidiaries", params, nil)
 }
 
-func (c *Client) EnforcementActions(params map[string]string) (map[string]any, error) {
-	return c.request(http.MethodGet, "/v1/events/enforcement", params, nil)
-}
-
 func (c *Client) EarningsTranscripts(params map[string]string) (map[string]any, error) {
 	return c.request(http.MethodGet, "/v1/earnings/transcripts", params, nil)
+}
+
+func (c *Client) EnforcementActions(params map[string]string) (map[string]any, error) {
+	return c.request(http.MethodGet, "/v1/events/enforcement", params, nil)
 }

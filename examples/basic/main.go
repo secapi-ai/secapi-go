@@ -1,26 +1,49 @@
 package main
 
 import (
-	"encoding/json"
-	"log"
+	"fmt"
 	"os"
 
 	secapi "github.com/secapi-ai/secapi-go"
 )
 
 func main() {
-	apiKey := os.Getenv("SECAPI_API_KEY")
-	if apiKey == "" {
-		log.Fatal("SECAPI_API_KEY is not set")
-	}
+	client := secapi.NewClient(os.Getenv("SECAPI_API_KEY"))
+	client.BaseURL = getenv("SECAPI_BASE_URL", getenv("SECAPI_API_BASE_URL", "https://api.secapi.ai"))
 
-	client := secapi.NewClient(apiKey)
-	entity, err := client.Entities.ResolveAgent(map[string]string{"ticker": "AAPL"})
+	entity, err := client.ResolveEntity(map[string]string{"ticker": "AAPL"})
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
+	}
+	filing, err := client.LatestFiling(map[string]string{"ticker": "AAPL", "form": "10-K"})
+	if err != nil {
+		panic(err)
+	}
+	section, err := client.LatestSection("item_1a", map[string]string{"ticker": "AAPL", "form": "10-K", "mode": "compact"})
+	if err != nil {
+		panic(err)
 	}
 
-	if err := json.NewEncoder(os.Stdout).Encode(entity); err != nil {
-		log.Fatal(err)
+	dilutionEvents, err := client.DilutionEvents(map[string]string{"ticker": "AAPL", "limit": "3"})
+	if err != nil {
+		panic(err)
 	}
+	dilutionRatings, err := client.DilutionRatings(map[string]string{"limit": "3"})
+	if err != nil {
+		panic(err)
+	}
+	dilutionCoverage, err := client.DilutionCoverage(map[string]string{})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(entity["name"], filing["id"], section["title"], dilutionEvents["object"], dilutionRatings["object"], dilutionCoverage["object"])
+}
+
+func getenv(name string, fallback string) string {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	return value
 }

@@ -57,21 +57,21 @@ func main() {
 			"mode":       "compact",
 		},
 		Entity: map[string]any{
-			"name":   entity["name"],
-			"ticker": entity["ticker"],
-			"cik":    entity["cik"],
+			"name":   stringField(entity, "name"),
+			"ticker": stringField(entity, "ticker"),
+			"cik":    stringField(entity, "cik"),
 		},
 		Filing: map[string]any{
-			"id":              filing["id"],
+			"id":              stringField(filing, "id"),
 			"accessionNumber": accessionNumber,
-			"form":            filing["form"],
-			"filingDate":      filing["filingDate"],
+			"form":            stringField(filing, "form"),
+			"filingDate":      stringField(filing, "filingDate", "filing_date"),
 		},
 		Section: map[string]any{
-			"title":           section["title"],
-			"key":             firstPresent(section, "key", "section_key"),
+			"title":           stringField(section, "title"),
+			"key":             stringField(section, "key", "section_key"),
 			"mode":            "compact",
-			"accessionNumber": firstPresentOr(section, accessionNumber, "accessionNumber", "accession_number", "accession"),
+			"accessionNumber": stringFieldOr(section, accessionNumber, "accessionNumber", "accession_number", "accession"),
 			"contentLength":   contentLength(section),
 		},
 	}
@@ -83,18 +83,18 @@ func main() {
 	fmt.Println(string(encoded))
 }
 
-func firstPresent(values map[string]any, keys ...string) any {
+func stringField(values map[string]any, keys ...string) string {
 	for _, key := range keys {
-		if value, ok := values[key]; ok {
+		if value, ok := values[key].(string); ok {
 			return value
 		}
 	}
-	return nil
+	return ""
 }
 
-func firstPresentOr(values map[string]any, fallback any, keys ...string) any {
-	value := firstPresent(values, keys...)
-	if value == nil {
+func stringFieldOr(values map[string]any, fallback string, keys ...string) string {
+	value := stringField(values, keys...)
+	if value == "" {
 		return fallback
 	}
 	return value
