@@ -2,7 +2,7 @@
 
 `github.com/secapi-ai/secapi-go` is a Go client for SEC API filings, statements, ownership data, factor data, and filing sections.
 
-[Documentation](https://docs.secapi.ai) · [Get an API key](https://secapi.ai/signup) · [Support](https://github.com/secapi-ai/secapi-go) · [Status](https://status.secapi.ai)
+[Documentation](https://docs.secapi.ai) · [Pricing](https://secapi.ai/pricing) · [Get an API key](https://secapi.ai/signup) · [Support](https://github.com/secapi-ai/secapi-go) · [Status](https://status.secapi.ai)
 
 ## Install and make a request
 
