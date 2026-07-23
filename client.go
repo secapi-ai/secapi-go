@@ -30,7 +30,7 @@ const DefaultHTTPTimeout = 30 * time.Second
 const DefaultRetryInitialBackoff = 200 * time.Millisecond
 const DefaultRetryMaxBackoff = 2 * time.Second
 const DefaultRetryMaxRetries = 2
-const SDKVersion = "2.0.0"
+const SDKVersion = "2.0.1"
 const sdkUserAgent = "secapi-go/" + SDKVersion
 
 // UnlimitedPaginationCap disables a MaxPages or MaxItems cap in explicit
