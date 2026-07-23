@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	secapi "github.com/secapi-ai/secapi-go"
+	secapi "github.com/secapi-ai/secapi-go/v2"
 )
 
 func main() {

@@ -1,13 +1,13 @@
 # SEC API Go SDK
 
-`github.com/secapi-ai/secapi-go` is the Go SDK for SEC API. Use it to retrieve filings, filing sections, statements, ownership data, and factor data in services and research workflows.
+`github.com/secapi-ai/secapi-go/v2` is a Go client for SEC API filings, statements, ownership data, factor data, and filing sections.
 
-[Documentation](https://docs.secapi.ai) · [Pricing](https://secapi.ai/pricing) · [Get an API key](https://secapi.ai/signup) · [Support](https://github.com/secapi-ai/secapi-go) · [Status](https://status.secapi.ai)
+[Documentation](https://docs.secapi.ai) · [Get an API key](https://secapi.ai/signup) · [Support](https://github.com/secapi-ai/secapi-go) · [Status](https://status.secapi.ai)
 
 ## Install and make a request
 
 ```bash
-go get github.com/secapi-ai/secapi-go
+go get github.com/secapi-ai/secapi-go/v2
 export SECAPI_API_KEY="secapi_live_..."
 ```
 
@@ -18,7 +18,7 @@ import (
     "fmt"
     "os"
 
-    secapi "github.com/secapi-ai/secapi-go"
+    secapi "github.com/secapi-ai/secapi-go/v2"
 )
 
 func main() {
@@ -34,7 +34,7 @@ func main() {
 }
 ```
 
-Run it with `go run .`. It prints the latest matching filing's accession number and SEC source URL. Keep both with downstream analysis: the answer is current when requested and can change after a new filing arrives.
+Run it with `go run .`. It prints the latest matching filing's accession number and SEC source URL; both can change after a new filing.
 
 ## Common requests
 

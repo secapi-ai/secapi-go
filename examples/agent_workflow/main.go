@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	secapi "github.com/secapi-ai/secapi-go"
+	secapi "github.com/secapi-ai/secapi-go/v2"
 )
 
 type workflowSummary struct {
